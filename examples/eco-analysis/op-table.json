@@ -1,0 +1,28 @@
+{
+  "operations": [
+    {
+      "id": "op-query",
+      "name": "检索并物化",
+      "category": "query",
+      "condition": "需要从外部系统（gh CLI / web 检索）获取事实并落盘",
+      "action": "调用检索工具获取结果，每条记录附来源链接，物化为 JSON 文件",
+      "verify": "产物文件存在、字段非空、引用可溯源"
+    },
+    {
+      "id": "op-generate",
+      "name": "综合分析生成",
+      "category": "generate",
+      "condition": "需要基于前序情报产出新结论",
+      "action": "交叉审计输入情报，生成结构化结论（机会/风险/结论），每条附证据引用",
+      "verify": "产物满足 acceptance_criteria（字段非空、证据引用存在）"
+    },
+    {
+      "id": "op-materialize",
+      "name": "物化报告",
+      "category": "materialize",
+      "condition": "需要将分析结果持久化为最终交付物",
+      "action": "将分析结果写成结构化 Markdown 报告文件",
+      "verify": "文件存在且满足 acceptance_criteria（章节与链接数可 grep 检查）"
+    }
+  ]
+}

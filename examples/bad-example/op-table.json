@@ -1,0 +1,12 @@
+{
+  "operations": [
+    {
+      "id": "op-query",
+      "name": "查询",
+      "category": "query",
+      "condition": "需要外部信息",
+      "action": "检索并物化结果",
+      "verify": "结果物化为文件"
+    }
+  ]
+}

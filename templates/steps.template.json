@@ -1,0 +1,22 @@
+{
+  "task_id": "__TASK_ID__",
+  "version": "0.1.0",
+  "created_at": "__DATE__",
+  "steps": [
+    {
+      "id": "s001",
+      "name": "第一步名称",
+      "description": "这一步做什么、产出什么",
+      "input": {},
+      "output": {
+        "file": "artifacts/s001.json",
+        "schema": { "required": [] }
+      },
+      "depends_on": [],
+      "op_ref": "op-generate",
+      "mind_ref": "mind-default",
+      "acceptance_criteria": ["可机械检查的验收条件，如：字段非空 / 数量达标 / 格式合规"],
+      "status": "pending"
+    }
+  ]
+}

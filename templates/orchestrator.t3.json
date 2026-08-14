@@ -1,0 +1,87 @@
+{
+  "output_template": {
+    "steps.json": {
+      "task_id": "",
+      "version": "0.1.0",
+      "steps": [
+        {
+          "id": "s001",
+          "name": "",
+          "description": "",
+          "input": {},
+          "output": {
+            "file": "artifacts/s001.json",
+            "schema": { "required": [] }
+          },
+          "depends_on": [],
+          "op_ref": "",
+          "mind_ref": "",
+          "acceptance_criteria": [""],
+          "status": "pending"
+        }
+      ]
+    },
+    "op-table.json": {
+      "operations": [
+        {
+          "id": "op-",
+          "name": "",
+          "category": "query|generate|verify|audit|materialize|transform|custom",
+          "condition": "",
+          "action": "",
+          "verify": ""
+        }
+      ]
+    },
+    "minds.json": {
+      "minds": [
+        {
+          "id": "mind-",
+          "name": "",
+          "params": {},
+          "apply_to": []
+        }
+      ]
+    }
+  },
+  "fill": [
+    "steps.json.steps: complete step sequence per data.task; every step gets id/name/output/depends_on/op_ref/mind_ref/acceptance_criteria/status=pending",
+    "op-table.json.operations: define only ops actually referenced by steps; reuse template ops (op-query/op-generate/op-verify/op-materialize) when they fit",
+    "minds.json.minds: define minds referenced by steps; reference existing mind params (mind-default/mind-audit) when they fit"
+  ],
+  "rules": [
+    "steps must be atomic: each step independently verifiable with a concrete artifact and mechanical acceptance criteria",
+    "acceptance_criteria must be mechanically checkable: file exists / field non-empty / count threshold / format compliance; never 'looks reasonable' or 'verify quality'",
+    "coupling hotspots must become step boundaries: where errors propagate densely (shared mutable code, cross-system API friction), split into separate steps with materialized handoff",
+    "granularity calibrated by error-propagation radius: too coarse leaves hidden chains inside a step; too fine explodes step count and overhead",
+    "minimize depends_on: parallel-first, independent steps must not be serialized",
+    "reuse ops: do not create new operations when existing ones suffice; keep op vocabulary convergent",
+    "failure containment: a step's failure must affect only that step, not propagate downstream",
+    "mind matching: exploration/audit steps use mind-audit; mechanical execution steps use mind-default; reuse existing mind-params instead of inventing new ones"
+  ],
+  "schema": {
+    "steps": "schemas/steps.schema.json",
+    "op-table": "schemas/op-table.schema.json",
+    "minds": "schemas/minds.schema.json"
+  },
+  "data": {
+    "task": "<task goal after intent condensation>",
+    "constraints": ["<implicit constraints from user intent>"],
+    "deliverable": "<final deliverable definition>",
+    "template_ref": "<optional: existing three-piece skeleton from templates/ or examples/>",
+    "intel_ref": "<optional: step1 intelligence artifact path, e.g. artifacts/step1_intel.json>"
+  },
+  "write": {
+    "steps.json": "<task_dir>/steps.json",
+    "op-table.json": "<task_dir>/op-table.json",
+    "minds.json": "<task_dir>/minds.json"
+  },
+  "forbidden": [
+    "do not invent op_ref or mind_ref not defined in the corresponding tables",
+    "do not leave acceptance_criteria non-mechanical",
+    "do not create dependency cycles",
+    "do not set status to anything other than pending",
+    "do not write prose explanations outside the JSON artifacts",
+    "do not skip output.file: every step must materialize an artifact"
+  ]
+}

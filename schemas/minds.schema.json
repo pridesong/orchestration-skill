@@ -1,0 +1,31 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "minds.schema.json",
+  "title": "Minds",
+  "description": "认知层：思维参数表，按步骤调度。回答'用什么思维做'。",
+  "type": "object",
+  "required": ["minds"],
+  "properties": {
+    "minds": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^mind-" },
+          "name": { "type": "string", "minLength": 1 },
+          "params": {
+            "type": "object",
+            "description": "思维参数：自由结构，引用已有 mind-params 体系（如 CONCEPT_BIRTH_LOOP、INTERPRET_LAYER 参数槽）"
+          },
+          "apply_to": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^s[0-9]{3}$" },
+            "description": "此思维应用的步骤 id 列表（与 steps 的 mind_ref 双向一致性由 validate.py 检查）"
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,55 @@
+{
+  "task_id": "bad-001",
+  "version": "0.1.0",
+  "created_at": "2026-08-14T00:00:00Z",
+  "steps": [
+    {
+      "id": "s001",
+      "name": "坏步骤一：引用不存在的操作",
+      "description": "op_ref 指向 op-nonexistent，应被拦截",
+      "input": {},
+      "output": { "file": "artifacts/s001.json", "schema": { "required": [] } },
+      "depends_on": [],
+      "op_ref": "op-nonexistent",
+      "mind_ref": "mind-default",
+      "acceptance_criteria": ["文件存在"],
+      "status": "pending"
+    },
+    {
+      "id": "s002",
+      "name": "坏步骤二：依赖不存在的步骤",
+      "description": "depends_on 指向 s999，应被拦截",
+      "input": {},
+      "output": { "file": "artifacts/s002.json", "schema": { "required": [] } },
+      "depends_on": ["s999"],
+      "op_ref": "op-query",
+      "mind_ref": "mind-default",
+      "acceptance_criteria": ["文件存在"],
+      "status": "pending"
+    },
+    {
+      "id": "s003",
+      "name": "坏步骤三：与 s004 构成依赖环",
+      "description": "s003 依赖 s004，s004 依赖 s003，应被拦截为环",
+      "input": {},
+      "output": { "file": "artifacts/s003.json", "schema": { "required": [] } },
+      "depends_on": ["s004"],
+      "op_ref": "op-query",
+      "mind_ref": "mind-default",
+      "acceptance_criteria": ["文件存在"],
+      "status": "pending"
+    },
+    {
+      "id": "s004",
+      "name": "坏步骤四：环的另一端",
+      "description": "",
+      "input": {},
+      "output": { "file": "artifacts/s004.json", "schema": { "required": [] } },
+      "depends_on": ["s003"],
+      "op_ref": "op-query",
+      "mind_ref": "mind-default",
+      "acceptance_criteria": ["文件存在"],
+      "status": "pending"
+    }
+  ]
+}

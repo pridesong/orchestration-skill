@@ -1,0 +1,20 @@
+{
+  "minds": [
+    {
+      "id": "mind-default",
+      "name": "默认执行思维",
+      "params": { "mode": "execute" },
+      "apply_to": []
+    },
+    {
+      "id": "mind-audit",
+      "name": "工具审计思维",
+      "params": {
+        "mode": "audit",
+        "gate": "I2",
+        "principle": "看起来完美的数字先过工具审计（数学恒等式/定义恒等/泰勒恒等），再当证据"
+      },
+      "apply_to": []
+    }
+  ]
+}

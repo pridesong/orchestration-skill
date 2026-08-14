@@ -1,0 +1,10 @@
+{
+  "minds": [
+    {
+      "id": "mind-default",
+      "name": "默认执行思维",
+      "params": { "mode": "execute" },
+      "apply_to": ["s001", "s002", "s003", "s004"]
+    }
+  ]
+}

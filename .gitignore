@@ -1,0 +1,10 @@
+# runtime artifacts (per-task runs)
+tasks/
+
+# python
+__pycache__/
+*.pyc
+
+# os
+.DS_Store
+Thumbs.db
