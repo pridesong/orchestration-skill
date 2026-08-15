@@ -328,23 +328,24 @@ def load_minds(task_dir):
 # ---------- 命令实现 ----------
 
 def generate_op_table(fields, modules):
-    """从装配表推导 op-table.json（条件路由表）。
+    """从装配表推导 op-table.json（条件路由表，排它）。
 
-    规则：
-      generate 字段 → {"condition": "<field>=passed", "dispatch": "<下一个依赖该字段的字段>"}
+    规则（每个条件互斥，因为 state.csv 每行只填当步字段）：
+      generate 字段 → {"condition": "<field>=passed", "dispatch": "<装配顺序下一字段>"}
       discriminate 字段 → {"condition": "<field>=<verdict>", "dispatch": "<routing 目标>"}
-    供审计/可视化；executor 运行时仍直接读装配表 routing（op-table 是派生物）。
+    op-table 是状态机的推进引擎：读最后一行 → 匹配唯一条件 → 得下一步字段。
     """
     operations = []
     field_ids = [f["field"] for f in fields]
-    for f in fields:
+    for i, f in enumerate(fields):
         fid = f["field"]
         produce = field_produce(fid)
         module = modules.get(f["module"], {})
         if produce == "generate":
+            nxt = field_ids[i + 1] if i + 1 < len(field_ids) else "stop"
             operations.append({
                 "condition": f"{fid}=passed",
-                "dispatch": "next",
+                "dispatch": nxt,
                 "side_effect": None,
             })
         elif produce == "discriminate":
@@ -353,9 +354,29 @@ def generate_op_table(fields, modules):
                 operations.append({
                     "condition": f"{fid}={verdict}",
                     "dispatch": target,
-                    "side_effect": "reset" if target != "stop" and target in field_ids else None,
+                    "side_effect": None,
                 })
     return operations
+
+
+def next_field_by_op_table(op_table, last_state):
+    """op-table 匹配最后一行 → 下一步字段（唯一，排它）。
+
+    last_state = state.csv 最后一行非空字段 {field: value}（一步只填一个字段）。
+    遍历 op-table，条件 `<field>=<value>` 与最后一行匹配（字段存在且值相等）→ 返回 dispatch。
+    无匹配 → None（初始/终止）。
+    """
+    if not last_state:
+        return None
+    fid, val = next(iter(last_state.items()))
+    for op in op_table:
+        cond = op.get("condition", "")
+        # 条件形如 "field=value"
+        if "=" in cond:
+            c_field, c_val = cond.split("=", 1)
+            if c_field == fid and c_val == val:
+                return op.get("dispatch")
+    return None
 
 
 def cmd_materialize(task_dir):
@@ -393,46 +414,48 @@ def cmd_status(task_dir):
     data = load_steps(task_dir)
     fields = data["fields"]
     state = load_state(task_dir)
+    modules = load_modules(task_dir)
+    op_table = generate_op_table(fields, modules)
+    nxt = next_field_by_op_table(op_table, state)
     print(f"任务 {data.get('task_id', '?')} v{data.get('version', '?')}")
     for f in fields:
         fid = f["field"]
         produce = field_produce(fid)
         deps = field_inputs(f)
         dep_s = f"  <- {','.join(sorted(deps))}" if deps else ""
-        # 完成性 = 产物文件存在；判别式额外显示最后判定值
-        done = os.path.exists(os.path.join(task_dir, f"artifacts/{fid}.json"))
+        marker = " ◀ 下一步" if fid == nxt else ""
         if produce == "discriminate" and state.get(fid):
-            st = f"[判断={state[fid]}]"
+            print(f"  {fid:<28} [{produce}]  [判断={state[fid]}]{marker} {f.get('name', '')}{dep_s}")
+        elif state.get(fid):
+            print(f"  {fid:<28} [{produce}]  {state[fid]:<12}{marker} {f.get('name', '')}{dep_s}")
         else:
-            st = "done" if done else "pending"
-        print(f"  {fid:<28} [{produce}]  {st:<12} {f.get('name', '')}{dep_s}")
+            print(f"  {fid:<28} [{produce}]  {'未执行':<12}{marker} {f.get('name', '')}{dep_s}")
+    if nxt is None:
+        print("  当前无下一步（初始态或已终止）")
 
 
 def cmd_ready(task_dir):
     data = load_steps(task_dir)
     fields = data["fields"]
-    ready = []
-    blocked = []
-    for f in fields:
-        fid = f["field"]
-        if os.path.exists(os.path.join(task_dir, f"artifacts/{fid}.json")):
-            continue  # 已物化 = 已完成
-        ok, why = prerequisites_met(task_dir, fields, f)
-        if ok:
-            ready.append(f)
-        else:
-            blocked.append((f, why))
-    if ready:
-        print("可执行字段（执行后调用 check <field> 验证推进）：")
-        for f in ready:
-            produce = field_produce(f["field"])
-            print(f"  {f['field']}  [{produce}]  {f.get('name', '')}")
-            print(f"      module: {f['module']}")
-            print(f"      产出: artifacts/{f['field']}.json")
-    if blocked:
-        print("暂不可执行（前置未满足）：")
-        for f, why in blocked:
-            print(f"  {f['field']}  {f.get('name', '')}  — {why}")
+    state = load_state(task_dir)
+    modules = load_modules(task_dir)
+    op_table = generate_op_table(fields, modules)
+    nxt = next_field_by_op_table(op_table, state)
+    if nxt is None:
+        # 初始态：第一个字段
+        nxt = fields[0]["field"] if fields else None
+    if nxt is None or nxt == "stop":
+        print("无可执行字段（任务已终止）")
+        return
+    f = get_field(fields, nxt)
+    if f is None:
+        print(f"op-table 指向不存在的字段: {nxt}")
+        return
+    produce = field_produce(nxt)
+    print(f"下一步（op-table 驱动）：{nxt}  [{produce}]  {f.get('name', '')}")
+    print(f"      module: {f['module']}")
+    print(f"      产出: artifacts/{nxt}.json")
+    print(f"      执行后调用 check {nxt} 验证推进")
 
 
 # ---------- T3 派发（消息即任务，零引导语） ----------
@@ -641,56 +664,34 @@ def cmd_check(task_dir, fid):
 
     append_state(task_dir, fields, fid, verdict, note=f"判别 {verdict}")
     print(f"{fid} 判断 = {verdict} ✓")
+    # 路由由 op-table 自然驱动：最后一行已是 <fid>=<verdict>，
+    # next_field_by_op_table 将匹配 routing 目标（含回修指向 generate_01）。
     target = routing.get(verdict)
     if target == "stop":
         print(f"  → 路由: {verdict} → stop（任务终止）")
-    elif target:
-        t_field = get_field(fields, target)
-        if t_field is None:
-            print(f"  → 路由: {verdict} → {target}（目标字段不存在，仅提示）")
-        else:
-            # 物化回修：目标产物存在 → 删除（=未完成），下游依赖者产物同步删除
-            removed = []
-            for ff in fields:
-                dep_ok = True
-                for dep in field_inputs(ff):
-                    if dep == target and ff["field"] != target:
-                        dep_ok = False
-                        break
-                if ff["field"] == target or not dep_ok:
-                    fp = os.path.join(task_dir, f"artifacts/{ff['field']}.json")
-                    if os.path.exists(fp):
-                        os.remove(fp)
-                        removed.append(ff["field"])
-            print(f"  → 路由: {verdict} → {target}（回修：删除产物 {'、'.join(removed) or '(无)'}）")
+    else:
+        print(f"  → 路由: {verdict} → {target}（op-table 据此指向下一步，无需删产物）")
     return 0
 
 
 def cmd_retry(task_dir, fid):
-    """重试 = 删除本字段产物（物化语义：产物没了=未完成=可重跑）。"""
+    """重试 = 追加 retry 标记行（产物保留，重跑时覆盖写）。"""
     data = load_steps(task_dir)
     field = get_field(data["fields"], fid)
     if field is None:
         sys.exit(f"字段不存在: {fid}")
-    fp = os.path.join(task_dir, f"artifacts/{fid}.json")
-    if not os.path.exists(fp):
-        sys.exit(f"产物不存在: {fid}（无产物可重试）")
-    os.remove(fp)
-    append_state(task_dir, data["fields"], fid, "retry", note="重试（产物删除）")
-    print(f"{fid} → 未完成（产物已删除，可重跑）")
+    append_state(task_dir, data["fields"], fid, "retry", note="重试")
+    print(f"{fid} → retry（重跑后覆盖产物）")
 
 
 def cmd_reset(task_dir, fid):
-    """重新编排后重置 = 删除本字段产物（回到未完成态）。"""
+    """重新编排后重置 = 追加 reset 标记行。"""
     data = load_steps(task_dir)
     field = get_field(data["fields"], fid)
     if field is None:
         sys.exit(f"字段不存在: {fid}")
-    fp = os.path.join(task_dir, f"artifacts/{fid}.json")
-    if os.path.exists(fp):
-        os.remove(fp)
     append_state(task_dir, data["fields"], fid, "reset", note="重新编排后重置")
-    print(f"{fid} → 未完成（产物已删除，可重跑）")
+    print(f"{fid} → reset（重新编排完成）")
 
 
 def main():
