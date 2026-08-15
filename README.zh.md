@@ -1,37 +1,50 @@
 # orchestration-skill
 
-面向 AI agent 的长任务编排引擎：可靠性来自**模块装配的状态机 + 机械化执行 + 两层审计**，而不是模型的长链能力。
+**长任务不该贵到必须用前沿模型。本引擎让廉价模型跑出前沿模型的可靠性——把可靠性从模型身上搬进结构里。**
 
-主 agent 浓缩意图 → 编排者 subagent 从模块库挑模块、连线、设路由，产出字段驱动的装配表（`steps.json` fields + `minds.json`）→ 机械执行器按字段语义驱动状态机（`generate_N` 产出推进 / `discriminate_N_xxx` 判断路由）→ 每字段通过 **T3 协议**（fill/rules/schema/data/write/forbidden，零引导语）派发 → 所有产物落到磁盘（文件夹 = 外部记忆，断点续跑）→ 两层审计拦截偏离。
+核心逻辑：长任务失败不是因为模型在某一步弱，而是不可靠在长链上复利。与其花钱买更强的模型把整条链装进它的上下文，不如**把长链拆成廉价模型轻松胜任的小步**，让链的可靠性由机械结构承担：
 
-## 为什么
+- **状态在磁盘不在上下文** — 每步写 `artifacts/<field>.json`；断点续跑、零上下文损耗、只重跑失败的那一步
+- **每个边界有机械门禁** — `validate`/`check`/`compare` 机械拦截幻觉与格式错误，不依赖模型自觉
+- **多次廉价调用 > 一次昂贵调用** — 编排者 + 独立审计 + 动态审计，多脑子补足单次推理弱
+- **零引导语派发（T3）** — subagent prompt 是 regex 锁定的文件引用（`T3FILE:v1 读取 <file> 并按内容执行`）；散文无法包裹协议，廉价模型没有漂移空间
 
-长任务失败不是因为模型弱，而是因为不可靠在长链上复利：
+## 为什么廉价模型跑得动
 
-- 步骤模糊化，错误静默传播
-- 编排者的散文指令被重新解读（"协议被散文包裹"）
-- 状态只活在上下文里，续跑即丢失
+| 廉价模型的短板 | 本引擎怎么把它变成优势 |
+|---|---|
+| 上下文小 | 状态在磁盘；每次派发只带当前这一步的输入 |
+| 容易幻觉 | 每个产物过机械门禁（schema/路由合法域/证据原文验证）——不信任模型自检 |
+| 长链薄弱 | 每个字段是独立小任务；长链可靠性在 op-table + 审计，不在一次长生成 |
+| 重跑成本高 | 断点续跑——第 9 步失败只重跑第 9 步，不重跑整个任务 |
+| 散文指令下漂移 | 派发 prompt 被 pattern 锁死；FORBIDDEN 物理封死错路 |
 
-本 skill 把这一切推入**结构**：JSON-Schema 约束的 JSON 契约、字段语义的状态机、模块推导的协议、T3 派发、每个边界的机械门禁。不要用更详细的散文对抗偏离，用结构。
+## 实测证据
 
-## 特性
+一个完整医药供应链任务（PVG→EZE 温控空运，1000kg，$11,500 硬预算）在廉价模型上全链路跑通：11 个字段（报价/海关/天气/航线/成本NPV/仪表板/审计/结论），每个都由锁定的 T3 prompt 派发。
 
-- **模块装配（搭积木）** — 编排者是装配师不是协议设计师：从 `modules/` 库挑模块（mod-generate/extract/transform/query/reason/fill/verify/audit/classify/mind-decider）、连线 inputs、给判别式设 routing。模块自带协议（produce/mind/output_schema/forbidden）
-- **两级模块模型** — 级别一 `produce`：`generate`（产出落盘即推进）vs `discriminate`（判断值路由分支）；级别二 `mind`：认知参数集（write/extract/transform/query/reason/fill/verify/audit/classify/decider）决定 forbidden。字段名即状态语义：`generate_01`、`discriminate_01_verdict`
-- **字段语义状态机** — `scripts/executor.py`：`ready`/`check`/`retry`/`reset`/`status`；前置门禁（输入依赖已物化）、后置门禁（generate 验 schema / discriminate 验判断值 ∈ routing）、判别路由让状态机从线性变分支（pass→下一步、revise→回修、reject→stop）
-- **审计回退机制** — 判别点 routing 支持对象形态 `{to, counter, limit, escalate, mind}`：回退目标 + 计数器 + 超限换脑 + 路由级 mind 覆盖。`materialize` 展开为 op-table（escalate 规则在前，排它由顺序 + 条件互斥保证）。计数器活在主 agent 上下文（`--state`），不落 state.csv——插件版主 agent 自然知道轮次；node 版程序主导才需数据化
-- **mind-decider（运行时思维选择）** — 复杂回退（降本、重构）不静态绑定 `routing.mind`：判别失败先路由到策略师判别式（`mod-mind-decider`，产出 chosen_mind + 机械可复算的 basis），读审计证据（成本结构/固定成本占比/可议价空间/失败类型）在运行时选重试思维。端到端已验证：固定成本墙场景选 mind-crusher 而非 mind-reason，回修结果 $12,676 与直接 crusher 运行完全一致（gap 收窄 72%）
-- **T3 协议派发** — `executor.py t3` 从模块 + mind + 依赖产物生成六件套派发（fill/rules/schema/data/write/forbidden）；唯一允许的 subagent prompt 是零引导语文件引用——散文无从包裹协议。**编排与编排审计同样走 T3 派发**（`templates/orchestrator.t3.json` / `templates/audit.t3.json`）
-- **能力插槽** — 模块声明 `skills`/`mcp`；执行器把插槽注入 T3 派发，执行 subagent 直接装配 skill/MCP 而非自行发现
-- **本机能力扫描** — `scripts/discover.py` 物化 `artifacts/capabilities.json`（DSH patch 层的 MCP server + skill 目录 + 运行时补充）；`validate.py` 拒绝任何不在清单中的插槽引用
-- **mind 限制** — `mind-orchestrator` 与 `mind-orchestration-audit` 把 LLM 心理学守卫（早期锚定/路径锁定/谄媚/确认偏误）直接编入编排与审计的 T3 rules
-- **mind 注入双轨制** — mind 分 `directive`（crusher 类正向路径，科研步骤）与 `constraint`（FORBIDDEN 类负向守卫，日常任务主力）：默认假设 LLM 具备产出能力，constraint mind 的职责是封死幻觉区滑行，而非教方法
-- **认知模态配比** — 每步需要不同的 LLM 心理状态：`role`（diagnose/scan/architect/write/audit/review）+ `forbidden_density`（zero/precise/dense）。诊断类零约束（广域扫视）、写手类命题级精准约束（通用禁令=负面心流）、审计类密集约束+预设命题为假；模块/mind/字段级 `forbidden` 把禁令绑定到具体命题
-- **mind 具象化（enforce）** — mind 的 `enforce` 四层（fill/schema/forbidden/check）合并进 T3 派发；`executor.py check` 机械验证证据是否来自来源文件原文。对照实验证明：散文 mind 指令只产出路径自指"证据"（`材料/决策/D1`）且丢失原有字段——enforce 把 mind 从散文升级为协议
-- **两层审计** — 静态（多路 subagent 独立审计装配表）+ 动态（同字段 3 次同类失败 → `needs_reorchestration`；执行性错误 vs 编排性错误判别）
-- **失败回流** — 失败轨迹回流进模板，引擎对每类任务的装配越用越准
-- **产物物化** — 每字段写入 `artifacts/<field>.json`；断点续跑、零上下文损耗交接
-- **零依赖** — 纯 Python 标准库（`json`/`os`/`sys`/`tempfile`/`collections`），有 Python 3.7+ 即可运行
+降本回退对照实验展示了结构带来的差距：
+
+| | mind-reason（方案内推导） | mind-crusher（翻墙） |
+|---|---|---|
+| 总成本 | $15,730 | **$12,676** |
+| 预算缺口 | $4,230 | **$1,176**（收窄 72%） |
+| 预算内可行运量 | 500kg（50%） | ≈888kg（89%） |
+
+且当回修经由运行时 **mind-decider** 路由（读审计证据——固定成本墙 vs 单价墙——再选思维）时，精确复现 $12,676：选择是机械可复算的判别决策，不是散文运气。
+
+## 工作原理
+
+主 agent 浓缩意图 → **编排者 subagent** 从模块库挑模块、连线、设路由，产出字段驱动装配表（`steps.json` + `minds.json`）→ 机械执行器按字段语义驱动状态机（`generate_N` 产出推进 / `discriminate_N_xxx` 判断路由）→ 每字段经 **T3 协议**派发 → 产物落盘 → 两层审计拦截偏离。
+
+关键机制（详见 `Description.md`）：
+- **模块装配** — 编排者是装配师不是协议设计师；模块自带协议（produce/mind/output_schema/forbidden）
+- **op-table 由声明展开** — executor 零推导：编排者声明的 `next`/`parallel`/`routing` 展开为排它条件路由表。并行组写同一行 state.csv（多条件 AND）；审计回退走 `{to, counter, limit, escalate, mind}`
+- **mind-decider** — 复杂回退不静态绑死思维；策略师判别式在运行时读审计证据选重试思维（见实测证据）
+- **T3 零引导语派发** — 六件套协议（fill/rules/schema/data/write/forbidden）由模块+mind+依赖产物生成；派发 prompt 被 regex 锁死；编排与审计走同一协议
+- **mind 双轨制** — `directive`（crusher 类正向路径）vs `constraint`（FORBIDDEN 类负向守卫）；认知模态配比（`role` + `forbidden_density`）匹配每步心理状态；`enforce` 把 mind 从散文升级为可机械检查的协议
+- **两层审计 + 失败回流** — 静态（独立审计装配表）+ 动态（3 次同类失败 → 重新编排）；失败轨迹回流模板
+- **零依赖** — 纯 Python 标准库，有 Python 3.7+ 即可运行
 
 ## 快速开始
 

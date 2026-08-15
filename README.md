@@ -1,36 +1,49 @@
 # orchestration-skill
 
-Long-task orchestration engine for AI agents: reliability comes from a **module-assembled state machine + mechanical execution + two-layer audit**, not from the model's long-context capability.
+**Long tasks shouldn't cost like they need a frontier model. This engine makes cheap models run long tasks with frontier-model reliability — by moving reliability out of the model and into structure.**
 
-The agent condenses intent → an orchestrator subagent assembles a field-driven pipeline (`steps.json` assembly table + `minds.json`) by picking modules from a library like building blocks → a mechanical executor drives the field-semantics state machine (`generate_N` produces and advances / `discriminate_N_xxx` judges and routes) → each field is dispatched via the **T3 protocol** (fill/rules/schema/data/write/forbidden, zero lead-in) → every artifact lands on disk (folder = external memory, resumable) → two-layer audit catches drift.
+The idea: a long task fails not because the model is weak at any single step, but because unreliability compounds across a long chain. So instead of paying for a stronger model to hold the whole chain in its head, this skill **breaks the chain into small steps that cheap models handle fine**, and puts the chain's reliability into mechanical structure:
 
-## Why
+- **state on disk, not in context** — every step writes `artifacts/<field>.json`; resume from disk, zero context loss, retry the failed step only
+- **mechanical gates at every boundary** — `validate` / `check` / `compare` reject hallucinated or malformed output without trusting the model
+- **many cheap calls > one expensive call** — orchestrator + independent audit + dynamic audit catch drift with multiple brains
+- **zero-lead-in dispatch (T3)** — the subagent prompt is a regex-locked file reference (`T3FILE:v1 读取 <file> 并按内容执行`); prose cannot wrap the protocol, so the cheap model has no room to drift
 
-Long tasks fail not because the model is weak, but because unreliability compounds across a long chain:
+## Why cheap models work here
 
-- steps blur together, errors propagate silently
-- the orchestrator's prose instructions get re-interpreted ("protocol wrapped in prose")
-- state lives only in context and is lost on resume
+| Cheap-model weakness | What this engine does about it |
+|---|---|
+| small context | state lives on disk; each dispatch carries only the current step's inputs |
+| hallucinates | every artifact passes mechanical gates (schema / routing membership / evidence-in-source); the model isn't trusted to self-check |
+| weak at long chains | each field is an independent tiny task; long-chain reliability is in the op-table + audits, not in one long generation |
+| expensive to re-run | resumable from disk — step 9 fails, re-run step 9, not the whole task |
+| drifts when told in prose | dispatch prompt is pattern-locked; FORBIDDEN seals off the wrong paths physically |
 
-This skill pushes all of it into **structure**: JSON contracts with JSON-Schema constraints, a field-semantics state machine, module-derived protocols, T3 dispatch, and mechanical gates at every boundary. Never fight drift with more prose — fight it with structure.
+## Evidence
 
-## Features
+A full pharma supply-chain task (PVG→EZE temp-controlled air cargo, 1000 kg, $11,500 hard budget) ran end-to-end on a cheap model: 11 fields, quotes / customs / weather / routing / cost-NPV / dashboard / audit / conclusion, each dispatched by the locked T3 prompt.
 
-- **Module assembly (building blocks)** — the orchestrator is an assembler, not a protocol designer: pick modules (`mod-generate`/`mod-extract`/`mod-transform`/`mod-query`/`mod-reason`/`mod-fill`/`mod-verify`/`mod-audit`/`mod-classify`/`mod-mind-decider`) from `modules/`, wire `inputs`, set `routing` on discriminators. Modules carry their own protocol (produce/mind/output_schema/forbidden)
-- **Two-level module model** — level 1 `produce`: `generate` (artifact lands → advance) vs `discriminate` (judgment value → route branch); level 2 `mind`: cognitive parameter sets (write/extract/transform/query/reason/fill/verify/audit/classify/decider) that determine forbidden. Field names encode state semantics: `generate_01`, `discriminate_01_verdict`
-- **Field-semantics state machine** — `scripts/executor.py`: `ready`/`check`/`retry`/`reset`/`status`. Front gate (input dependencies materialized), back gate (generate validates output schema / discriminate validates routing membership), discriminator routing turns the machine from linear into branching (pass→next, revise→rework, reject→stop)
-- **Audit-rework mechanism** — discriminator routing supports object form `{to, counter, limit, escalate, mind}`: rework target with counter, escalation (mind switch) after limit, mind override per route. `materialize` expands it into op-table (escalate rule first, exclusive by order + mutually exclusive conditions). Counters live in the main agent's context (`--state`), not state.csv — the plugin version knows round/count naturally; the node version datafies because a program drives it
-- **Mind-decider (runtime mind selection)** — for complex rework (cost-cutting, refactoring) don't statically bind `routing.mind`; route the failure to a strategy discriminator (`mod-mind-decider`, outputs `chosen_mind` + machine-recomputable `basis`) which reads the audit evidence (cost structure / fixed-cost share / negotiation space / failure type) and picks the rework mind at runtime. Verified end-to-end: the decider chose `mind-crusher` over `mind-reason` for a fixed-cost wall, and the rework reproduced the same $12,676 as the direct crusher run (gap −72%)
-- **T3 protocol dispatch** — `executor.py t3` generates the six-piece dispatch (fill/rules/schema/data/write/forbidden) from module + mind + dependency artifacts; the only allowed subagent prompt is a zero-lead-in file reference — no prose can wrap the protocol. **Orchestration and orchestration-audit are dispatched the same way** (`templates/orchestrator.t3.json`, `templates/audit.t3.json`)
-- **Capability slots** — modules declare `skills`/`mcp`; the executor injects them into the T3 dispatch so the executing subagent assembles skills/MCP tools directly instead of discovering them
-- **Local capability scan** — `scripts/discover.py` materializes `artifacts/capabilities.json` (MCP servers from the DSH patch layer + skill dirs + runtime supplements); `validate.py` rejects any slot that names a capability absent from this inventory
-- **Mind constraints** — `mind-orchestrator` and `mind-orchestration-audit` encode LLM-psychology guards (anchoring / path-locking / sycophancy / confirmation bias) directly into the T3 rules of orchestration and its audit
-- **Mind dual-track injection** — minds are `directive` (crusher-style positive paths for research steps) or `constraint` (FORBIDDEN-style negative guards for everyday tasks): the default assumption is the LLM can produce — the job of constraint minds is to seal off the hallucination slide, not to teach method
-- **Cognitive-mode ratio** — each step needs a different LLM psychological state: `role` (diagnose/scan/architect/write/audit/review) + `forbidden_density` (zero/precise/dense). Diagnose gets zero FORBIDDEN (broad scan), writers get precise proposition-level FORBIDDEN (universal bans cause negative flow), auditors get dense FORBIDDEN + presumed-guilty framing. Module/mind/field-level `forbidden` arrays bind bans to the concrete proposition
-- **Mind materialization (enforce)** — a mind's `enforce` block (fill/schema/forbidden/check) is merged into the T3 dispatch; `executor.py check` mechanically verifies evidence against its source file. A control experiment showed prose mind instructions produce self-referential path "evidence" (`材料/决策/D1`) and drop existing fields — enforce upgrades minds from prose to protocol
-- **Two-layer audit** — static (multi-agent independent audit of the assembly) + dynamic (3 same-class failures → `needs_reorchestration`; execution-error vs orchestration-error discrimination)
-- **Failure feedback loop** — failure traces flow back into templates; the engine gets better at assembling each task type
-- **Materialized artifacts** — every field writes `artifacts/<field>.json`; resume from disk, hand off with zero context loss
+The cost-reduction rework experiment showed the difference structure makes:
+
+| | mind-reason (plan-internal) | mind-crusher (flip assumptions) |
+|---|---|---|
+| total cost | $15,730 | **$12,676** |
+| gap vs budget | $4,230 | **$1,176** (−72%) |
+| budget-feasible volume | 500 kg (50%) | ≈888 kg (89%) |
+
+And when the rework was routed through the runtime **mind-decider** (reads the audit evidence — fixed-cost wall vs unit-price wall — then picks the mind), it reproduced $12,676 exactly: the selection is a machine-recomputable discriminator decision, not prose luck.
+
+## How it works
+
+A main agent condenses intent → an **orchestrator subagent** assembles a field-driven pipeline (`steps.json` + `minds.json`) by picking modules from a library → a mechanical executor drives the field-semantics state machine (`generate_N` produces and advances / `discriminate_N_xxx` judges and routes) → each field dispatches via the **T3 protocol** → artifacts land on disk → two-layer audit catches drift.
+
+Key mechanisms (full detail in `Description.md`):
+- **Module assembly** — the orchestrator is an assembler, not a protocol designer; modules carry their own protocol (produce/mind/output_schema/forbidden)
+- **op-table from declarations** — the executor never infers; `next`/`parallel`/`routing` declared by the orchestrator expand into an exclusive condition-routing table. Parallel groups write to the same state.csv row (multi-condition AND); audit-rework routes via `{to, counter, limit, escalate, mind}`
+- **Mind-decider** — complex rework doesn't statically bind a mind; a strategy discriminator reads audit evidence at runtime and picks the rework mind (see Evidence)
+- **T3 zero-lead-in dispatch** — six-piece protocol (fill/rules/schema/data/write/forbidden) generated from module + mind + dependency artifacts; the dispatch prompt is regex-locked; orchestration and audit use the same protocol
+- **Mind dual-track** — `directive` minds (crusher-style positive paths) vs `constraint` minds (FORBIDDEN-style negative guards); cognitive-mode ratio (`role` + `forbidden_density`) matches each step's psychological state; `enforce` upgrades minds from prose to machine-checkable protocol
+- **Two-layer audit + failure feedback** — static (independent audit of the assembly) + dynamic (3 same-class failures → re-orchestrate); failure traces flow back into templates
 - **Zero dependencies** — pure Python standard library; runs anywhere Python 3.7+ exists
 
 ## Quick start
@@ -51,7 +64,7 @@ python scripts/executor.py t3 examples/demo-task generate_01
 
 Task directories are created **in the user's project folder** (`<project>/<task_id>/`), never inside the skill install directory. Use `scripts/discover.py` there to scan local capabilities.
 
-## How it works
+## Workflow
 
 The skill's meta-state-machine (design convergence) is separated from the task's state machine (execution):
 
