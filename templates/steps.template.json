@@ -1,24 +1,35 @@
 {
   "task_id": "__TASK_ID__",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "created_at": "__DATE__",
-  "steps": [
+  "fields": [
     {
-      "id": "s001",
+      "field": "generate_01",
       "name": "第一步名称",
-      "description": "这一步做什么、产出什么",
-      "input": {},
-      "output": {
-        "file": "artifacts/s001.json",
-        "schema": { "required": [] }
+      "module": "mod-query",
+      "inputs": {
+        "query": "检索内容"
       },
-      "depends_on": [],
-      "op_ref": "op-generate",
-      "mind_ref": "mind-default",
-      "extra_skills": [],
-      "extra_mcp": [],
-      "acceptance_criteria": ["可机械检查的验收条件，如：字段非空 / 数量达标 / 格式合规"],
-      "status": "pending"
+      "acceptance_criteria": [
+        "artifacts/generate_01.json 文件存在且为合法 JSON",
+        "可机械检查的验收条件，如：字段非空 / 数量达标 / 格式合规"
+      ],
+      "status": "pending",
+      "next": "generate_02"
+    },
+    {
+      "field": "generate_02",
+      "name": "第二步名称",
+      "module": "mod-reason",
+      "inputs": {
+        "source": "generate_01"
+      },
+      "acceptance_criteria": [
+        "artifacts/generate_02.json 文件存在且为合法 JSON",
+        "每条结论附证据引用"
+      ],
+      "status": "pending",
+      "next": "stop"
     }
   ]
 }

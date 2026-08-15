@@ -1,5 +1,5 @@
 {
-  "task_id": "eco-test-001",
+  "task_id": "eco-analysis",
   "version": "0.2.0",
   "created_at": "",
   "fields": [
@@ -90,7 +90,7 @@
         "source": "generate_04"
       },
       "acceptance_criteria": [
-        "artifacts/s005_report.md 文件存在",
+        "artifacts/generate_05.json 文件存在",
         "报告含章节标题'生态位机会'",
         "报告含至少 3 个 https:// 来源链接"
       ],

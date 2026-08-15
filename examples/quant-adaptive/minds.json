@@ -1,42 +1,86 @@
 {
   "minds": [
     {
-      "id": "mind-default",
-      "name": "默认执行思维",
+      "id": "mind-query",
+      "name": "查询思维",
+      "type": "constraint",
+      "role": "diagnose",
+      "forbidden_density": "zero",
       "params": {
-        "mode": "execute",
-        "principle": "严格按步骤定义机械执行：只物化事实与数值，脚本可复现，不添加主观判断；回测按 IS/OOS 双段机械执行，OOS 沿用训练段路由不重估不重选，指标如实报告，不选择性展示"
+        "mode": "query",
+        "principle": "真实检索——禁止凭记忆作答；数据源与文件引用必须真实存在"
       },
-      "apply_to": [
-        "discriminate_01_verdict",
-        "generate_06"
-      ]
+      "forbidden": [
+        "禁止凭记忆作答——必须真实检索",
+        "禁止编造不存在的来源"
+      ],
+      "apply_to": ["generate_01"]
+    },
+    {
+      "id": "mind-transform",
+      "name": "变换思维",
+      "type": "constraint",
+      "role": "execute",
+      "forbidden_density": "precise",
+      "params": {
+        "mode": "transform",
+        "principle": "统计结论必须带证据数字（IC/ICIR/n_days/分层价差/状态分组统计），所有统计量由脚本从原始 npz 计算，禁止凭印象断言"
+      },
+      "forbidden": [
+        "禁止增删信息——信息守恒",
+        "禁止凭印象断言——每个数字可溯源到具体文件与数组"
+      ],
+      "apply_to": ["generate_02"]
+    },
+    {
+      "id": "mind-write",
+      "name": "心流构造思维",
+      "type": "constraint",
+      "role": "write",
+      "forbidden_density": "precise",
+      "params": {
+        "mode": "generate",
+        "principle": "回测按 IS/OOS 双段机械执行，OOS 沿用训练段路由不重估不重选；路由证据只用样本内（IS）段统计量，OOS 仅验证不选择；指标如实报告，不选择性展示；状态间差异以数值差、秩相关与 top 信号一致性为据"
+      },
+      "forbidden": [
+        "禁止编造输入中不存在的事实",
+        "禁止选择性展示指标——如实报告",
+        "禁止用散文替代结构化产出"
+      ],
+      "apply_to": ["generate_03", "generate_04", "generate_05", "generate_06"]
+    },
+    {
+      "id": "mind-verify",
+      "name": "验证思维",
+      "type": "constraint",
+      "role": "audit",
+      "forbidden_density": "dense",
+      "params": {
+        "mode": "verify",
+        "principle": "严格按步骤定义机械执行：只物化事实与数值，脚本可复现，不添加主观判断"
+      },
+      "forbidden": [
+        "禁止预设判定结果——verdict 由核对结果决定",
+        "禁止放行证据不足的结论"
+      ],
+      "apply_to": ["discriminate_01_verdict"]
     },
     {
       "id": "mind-audit",
-      "name": "检索审计思维",
+      "name": "工具审计思维",
+      "type": "constraint",
+      "role": "audit",
+      "forbidden_density": "dense",
       "params": {
         "mode": "audit",
-        "principle": "只以可验证事实为据：文档/数据结构结论必须附文件与键名引用；审计只认可机械复算的证据（SHA256 全量比对、数值容差、grep 检查），无法溯源的信息不得进入结论；点对点（point-in-time）审计要求 regime 标签与路由 IC 不得引用 t 时刻之后的信息，判定必须附数值依据"
+        "principle": "只以可验证事实为据：文档/数据结构结论必须附文件与键名引用；审计只认可机械复算的证据（SHA256 全量比对、数值容差、grep 检查）；点对点（point-in-time）审计要求 regime 标签与路由 IC 不得引用 t 时刻之后的信息，判定必须附数值依据"
       },
-      "apply_to": [
-        "generate_01",
-        "discriminate_02_verdict"
-      ]
-    },
-    {
-      "id": "mind-research",
-      "name": "数据分析思维",
-      "params": {
-        "mode": "research",
-        "principle": "统计结论必须带证据数字（IC/ICIR/n_days/分层价差/状态分组统计），所有统计量由脚本从原始 npz 计算，禁止凭印象断言；路由证据只用样本内（IS）段统计量，样本外（OOS）段仅用于验证不用于选择；状态间差异以数值差、秩相关与 top 信号一致性为据，每个数字可溯源到具体文件与数组"
-      },
-      "apply_to": [
-        "generate_02",
-        "generate_03",
-        "generate_04",
-        "generate_05"
-      ]
+      "forbidden": [
+        "禁止接受路径式引用充当证据",
+        "禁止放行未附证据的结论",
+        "禁止引用审计时点之后的信息"
+      ],
+      "apply_to": ["discriminate_02_verdict"]
     }
   ]
 }

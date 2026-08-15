@@ -1,28 +1,38 @@
 {
   "minds": [
     {
-      "id": "mind-default",
-      "name": "默认执行思维",
+      "id": "mind-query",
+      "name": "查询思维",
+      "type": "constraint",
+      "role": "diagnose",
+      "forbidden_density": "zero",
       "params": {
-        "mode": "execute"
+        "mode": "query",
+        "principle": "真实检索——禁止凭记忆作答；每条结论必须附来源引用，无法溯源的信息不得进入分析"
       },
-      "apply_to": [
-        "generate_01",
-        "generate_02",
-        "generate_03",
-        "generate_05"
-      ]
+      "forbidden": [
+        "禁止凭记忆作答——必须真实检索",
+        "禁止编造不存在的来源",
+        "禁止用单一来源充当多源结论"
+      ],
+      "apply_to": ["generate_01", "generate_02", "generate_03"]
     },
     {
-      "id": "mind-audit",
-      "name": "检索审计思维",
+      "id": "mind-write",
+      "name": "心流构造思维",
+      "type": "constraint",
+      "role": "write",
+      "forbidden_density": "precise",
       "params": {
-        "mode": "audit",
-        "principle": "只以可验证事实为据，每条结论须附来源引用；无法溯源的信息不得进入分析"
+        "mode": "generate",
+        "principle": "分析结论必须以检索证据为据（generate_01/02/03），每条机会/风险附 evidence_ref 引用；报告只物化事实与可溯源结论"
       },
-      "apply_to": [
-        "generate_04"
-      ]
+      "forbidden": [
+        "禁止编造输入中不存在的事实",
+        "禁止无 evidence_ref 的结论",
+        "禁止用散文替代结构化产出"
+      ],
+      "apply_to": ["generate_04", "generate_05"]
     }
   ]
 }

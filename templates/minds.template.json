@@ -16,6 +16,113 @@
       "apply_to": []
     },
     {
+      "id": "mind-query",
+      "name": "查询思维",
+      "type": "constraint",
+      "role": "diagnose",
+      "forbidden_density": "zero",
+      "params": { "mode": "query", "principle": "真实检索——禁止凭记忆作答，引用必须可溯源" },
+      "forbidden": [
+        "禁止凭记忆作答——必须真实检索",
+        "禁止编造不存在的来源",
+        "禁止用单一来源充当多源结论"
+      ],
+      "apply_to": []
+    },
+    {
+      "id": "mind-reason",
+      "name": "推理思维",
+      "type": "constraint",
+      "role": "architect",
+      "forbidden_density": "precise",
+      "params": { "mode": "reason" },
+      "forbidden": [
+        "禁止跳步——每步推导必须显式",
+        "禁止只给结论不给推导过程",
+        "禁止无依据的自定义参数——assumption 必须声明来源/基准与推导依据"
+      ],
+      "apply_to": []
+    },
+    {
+      "id": "mind-write",
+      "name": "心流构造思维",
+      "type": "constraint",
+      "role": "write",
+      "forbidden_density": "precise",
+      "params": { "mode": "generate" },
+      "forbidden": [
+        "禁止编造输入中不存在的事实",
+        "禁止用散文替代结构化产出——严格按 schema 输出",
+        "禁止占位/示例数据——所有数字必须来自输入或显式推导"
+      ],
+      "apply_to": []
+    },
+    {
+      "id": "mind-extract",
+      "name": "提取思维",
+      "type": "constraint",
+      "role": "execute",
+      "forbidden_density": "precise",
+      "params": { "mode": "extract", "principle": "非结构化→结构化，保留原文语义，逐项附 evidence" },
+      "forbidden": [
+        "禁止增删材料语义——提取不改写原意",
+        "禁止用路径式引用充当 evidence"
+      ],
+      "apply_to": []
+    },
+    {
+      "id": "mind-transform",
+      "name": "变换思维",
+      "type": "constraint",
+      "role": "execute",
+      "forbidden_density": "precise",
+      "params": { "mode": "transform", "principle": "形态转换信息守恒" },
+      "forbidden": [
+        "禁止增删信息——信息守恒",
+        "禁止改变语义——只换形态"
+      ],
+      "apply_to": []
+    },
+    {
+      "id": "mind-fill",
+      "name": "填充思维",
+      "type": "constraint",
+      "role": "execute",
+      "forbidden_density": "precise",
+      "params": { "mode": "fill" },
+      "forbidden": [
+        "禁止跳过任何必填字段",
+        "禁止用占位值填充——每字段必须有真实内容"
+      ],
+      "apply_to": []
+    },
+    {
+      "id": "mind-verify",
+      "name": "验证思维",
+      "type": "constraint",
+      "role": "audit",
+      "forbidden_density": "dense",
+      "params": { "mode": "verify", "principle": "对照验收标准或工具复算，不预设结论" },
+      "forbidden": [
+        "禁止预设判定结果——verdict 由核对结果决定",
+        "禁止放行证据不足的结论——evidence 必须具体引用"
+      ],
+      "apply_to": []
+    },
+    {
+      "id": "mind-classify",
+      "name": "分类思维",
+      "type": "constraint",
+      "role": "execute",
+      "forbidden_density": "precise",
+      "params": { "mode": "classify" },
+      "forbidden": [
+        "禁止类别外值——label 必须在声明的枚举内",
+        "禁止凭印象分类——每项必须给出判定依据"
+      ],
+      "apply_to": []
+    },
+    {
       "id": "mind-focus",
       "name": "聚焦执行思维",
       "type": "constraint",

@@ -47,6 +47,7 @@
                   "description": "审计回退机制：to=回退目标；limit=回退次数上限；escalate=超限后换脑去向（mind-decider/mind-choose 等）；mind=本路由的思维覆盖",
                   "properties": {
                     "to": { "type": "string" },
+                    "counter": { "type": "string", "description": "回退计数键名（默认 <field>_count，主 agent 上下文管理）" },
                     "limit": { "type": "integer", "minimum": 1 },
                     "escalate": { "type": "string" },
                     "mind": { "type": "string" }

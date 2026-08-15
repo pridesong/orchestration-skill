@@ -1,43 +1,72 @@
 {
   "minds": [
     {
-      "id": "mind-default",
-      "name": "默认执行思维",
+      "id": "mind-query",
+      "name": "查询思维",
+      "type": "constraint",
+      "role": "diagnose",
+      "forbidden_density": "zero",
       "params": {
-        "mode": "execute",
-        "principle": "严格按步骤定义机械执行：只物化事实与可复现脚本，不添加主观判断；测试结果如实记录 passed/failed 计数，不选择性展示；帧/编解码断言必须与 s002.transport_decision 结论一致（custom_rpc_http 断言 POST /api/<ns>/<method> 与 {args} 载荷与 RpcResponse/RpcError 编解码，jsonrpc 系才断言 JSON-RPC 字段），禁止硬编码协议；认证按 s002.transport_decision.auth 条件执行（非 none 必须实现并测试，none 豁免并记录）；live_verified 语义为冒烟操作全部成功，与 reachable 解耦，失败如实记录不掩盖；每个产物字段可溯源到契约或测试输出"
+        "mode": "query",
+        "principle": "真实检索——协议面结论必须附 DSH 源码/文档文件与键名引用，禁止凭记忆或假设作答"
       },
-      "apply_to": [
-        "generate_03",
-        "generate_04",
-        "generate_05",
-        "discriminate_01_verdict",
-        "discriminate_02_verdict",
-        "generate_06"
-      ]
+      "forbidden": [
+        "禁止凭记忆作答——必须真实检索",
+        "禁止编造不存在的来源",
+        "禁止凭空假设 JSON-RPC——协议形态由探查证据决定"
+      ],
+      "apply_to": ["generate_01"]
+    },
+    {
+      "id": "mind-write",
+      "name": "心流构造思维",
+      "type": "constraint",
+      "role": "write",
+      "forbidden_density": "precise",
+      "params": {
+        "mode": "generate",
+        "principle": "契约设计以探查证据为据：protocol.kind 与传输决策由 generate_01 探查结论决定；每个方法/字段条目引用 generate_01 中真实存在的文件与键名；测试结果如实记录 passed/failed 计数，不选择性展示；live_verified 语义为冒烟操作全部成功，失败如实记录不掩盖"
+      },
+      "forbidden": [
+        "禁止编造输入中不存在的事实",
+        "禁止硬编码协议——断言与 generate_02.transport_decision 结论一致",
+        "禁止选择性展示测试结果",
+        "禁止用散文替代结构化产出"
+      ],
+      "apply_to": ["generate_02", "generate_03", "generate_04", "generate_05", "generate_06"]
+    },
+    {
+      "id": "mind-verify",
+      "name": "验证思维",
+      "type": "constraint",
+      "role": "audit",
+      "forbidden_density": "dense",
+      "params": {
+        "mode": "verify",
+        "principle": "严格按步骤定义机械执行：帧/编解码断言必须与 generate_02.transport_decision 结论一致；认证按 generate_02.transport_decision.auth 条件执行；只物化事实与可复现脚本，不添加主观判断"
+      },
+      "forbidden": [
+        "禁止预设判定结果——verdict 由核对结果决定",
+        "禁止放行证据不足的结论"
+      ],
+      "apply_to": ["discriminate_01_verdict", "discriminate_02_verdict"]
     },
     {
       "id": "mind-audit",
-      "name": "检索审计思维",
+      "name": "工具审计思维",
+      "type": "constraint",
+      "role": "audit",
+      "forbidden_density": "dense",
       "params": {
         "mode": "audit",
-        "principle": "只以可验证事实为据：协议面结论必须附 DSH 源码/文档文件与键名引用；审计只认可机械复算的证据（SHA256 全量比对、pytest 计数复算、e2e 场景独立重跑计数比对、grep 检查、契约字段逐项核对）；只读约束是硬边界——禁止修改 DSH 仓库任何文件，无法溯源的信息不得进入结论；e2e 场景自报 passed 必须由独立重跑复核"
+        "principle": "只以可验证事实为据：审计只认可机械复算的证据（SHA256 全量比对、pytest 计数复算、e2e 场景独立重跑计数比对、grep 检查、契约字段逐项核对）；只读约束是硬边界——禁止修改 DSH 仓库任何文件；e2e 场景自报 passed 必须由独立重跑复核"
       },
-      "apply_to": [
-        "generate_01",
-        "discriminate_03_verdict"
-      ]
-    },
-    {
-      "id": "mind-research",
-      "name": "数据分析思维",
-      "params": {
-        "mode": "research",
-        "principle": "契约设计必须以探查证据为据：protocol.kind（custom_rpc/jsonrpc）与传输决策由 s001 探查结论决定，禁止凭空假设 JSON-RPC；每个方法/字段条目引用 s001 中真实存在的文件与键名；契约覆盖五能力（新建会话/发送消息/接收回复/列举会话/恢复会话）；回复模式（完整/流式）与认证方式由 s001 探查结论决定"
-      },
-      "apply_to": [
-        "generate_02"
-      ]
+      "forbidden": [
+        "禁止接受路径式引用充当证据",
+        "禁止放行未附证据的结论",
+        "禁止修改审计对象文件——只读审计"
+      ],
+      "apply_to": ["discriminate_03_verdict"]
     }
   ]
 }

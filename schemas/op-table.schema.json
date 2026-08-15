@@ -1,35 +1,32 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "op-table.schema.json",
-  "title": "Operation Table",
-  "description": "原语层：操作原语表，条件驱动。回答'怎么做'。",
+  "title": "Operation Table (condition routing)",
+  "description": "路由层派生物：materialize 从编排者声明（steps.json 的 next/parallel/routing）展开的条件路由表。executor 只读最后一行 state 匹配 condition → dispatch。完全由编排者声明驱动，executor 零推导。",
   "type": "object",
   "required": ["operations"],
   "properties": {
     "operations": {
       "type": "array",
-      "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["id", "name", "category", "condition", "action", "verify"],
+        "required": ["condition", "dispatch"],
         "properties": {
-          "id": { "type": "string", "pattern": "^op-" },
-          "name": { "type": "string", "minLength": 1 },
-          "category": {
-            "enum": ["query", "generate", "verify", "audit", "materialize", "transform", "custom"]
+          "condition": {
+            "type": "string",
+            "description": "条件：逗号分隔多条件 AND。<field>=<value>（generate 完成=passed / 判别值）或 <field> <op> <number>（>= <= > < 计数比较）。并行组展开为多字段 AND。"
           },
-          "condition": { "type": "string", "description": "触发条件：何时使用此操作" },
-          "action": { "type": "string", "description": "执行动作描述" },
-          "verify": { "type": "string", "description": "此操作自身的验证方式" },
-          "required_skills": {
-            "type": "array",
-            "items": { "type": "string", "minLength": 1 },
-            "description": "能力插槽（skill）：执行本操作所需加载的 skill 名列表。空数组或缺失 = 无额外 skill。"
+          "dispatch": {
+            "type": "string",
+            "description": "命中后下一步字段名（或 stop）。"
           },
-          "required_mcp": {
-            "type": "array",
-            "items": { "type": "string", "minLength": 1 },
-            "description": "能力插槽（MCP）：执行本操作所需调用的 MCP 工具/服务名列表。空数组或缺失 = 无额外 MCP。"
+          "side_effect": {
+            "type": ["string", "null"],
+            "description": "副作用：如 <counter>+1（审计回退计数），由主 agent 上下文管理（--state），不落 csv。"
+          },
+          "mind": {
+            "type": "string",
+            "description": "本路由的思维覆盖（如回退换脑 mind-crusher / mind-decider 选出的思维），cmd_t3 注入。"
           }
         }
       }

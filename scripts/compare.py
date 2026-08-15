@@ -51,7 +51,7 @@ def main():
         if not os.path.exists(fpath):
             issues.append(f"字段 {fid}: 期望产物缺失 {fname}")
             continue
-        module = modules.get(f.get("module") or {}) or {}
+        module = modules.get(f.get("module")) or {}
         required = (module.get("output_schema") or {}).get("required", [])
         try:
             with open(fpath, "r", encoding="utf-8-sig") as fh:
@@ -64,12 +64,19 @@ def main():
                 issues.append(f"字段 {fid}: 产物 {fname} 缺少字段 {field_name}")
         if DIS_FIELD.match(fid):
             routing = f.get("routing") or module.get("routing") or {}
+            # 只校验判断项字段（第一个 required 字符串字段），其余 required 字段
+            # （如 basis 证据）是支撑内容不是路由值，不得参与路由合法域校验。
+            verdict_field = None
             for item in required:
-                if item in content and isinstance(content[item], str) and routing:
-                    if content[item] not in routing:
-                        issues.append(
-                            f"字段 {fid}: 判断项 {item}={content[item]} 不在路由合法域 {sorted(routing.keys())}"
-                        )
+                if item in content and isinstance(content[item], str):
+                    verdict_field = item
+                    break
+            if verdict_field and routing:
+                verdict = content[verdict_field]
+                if verdict not in routing:
+                    issues.append(
+                        f"字段 {fid}: 判断项 {verdict_field}={verdict} 不在路由合法域 {sorted(routing.keys())}"
+                    )
 
     if issues:
         print("偏离检查: 发现问题")

@@ -16,10 +16,11 @@
 
 ## 特性
 
-- **模块装配（搭积木）** — 编排者是装配师不是协议设计师：从 `modules/` 库挑模块（mod-generate/extract/transform/query/reason/fill/verify/audit/classify）、连线 inputs、给判别式设 routing。模块自带协议（produce/mind/output_schema/forbidden）
-- **两级模块模型** — 级别一 `produce`：`generate`（产出落盘即推进）vs `discriminate`（判断值路由分支）；级别二 `mind`：认知参数集（write/extract/transform/query/reason/fill/verify/audit/classify）决定 forbidden。字段名即状态语义：`generate_01`、`discriminate_01_verdict`
+- **模块装配（搭积木）** — 编排者是装配师不是协议设计师：从 `modules/` 库挑模块（mod-generate/extract/transform/query/reason/fill/verify/audit/classify/mind-decider）、连线 inputs、给判别式设 routing。模块自带协议（produce/mind/output_schema/forbidden）
+- **两级模块模型** — 级别一 `produce`：`generate`（产出落盘即推进）vs `discriminate`（判断值路由分支）；级别二 `mind`：认知参数集（write/extract/transform/query/reason/fill/verify/audit/classify/decider）决定 forbidden。字段名即状态语义：`generate_01`、`discriminate_01_verdict`
 - **字段语义状态机** — `scripts/executor.py`：`ready`/`check`/`retry`/`reset`/`status`；前置门禁（输入依赖已物化）、后置门禁（generate 验 schema / discriminate 验判断值 ∈ routing）、判别路由让状态机从线性变分支（pass→下一步、revise→回修、reject→stop）
 - **审计回退机制** — 判别点 routing 支持对象形态 `{to, counter, limit, escalate, mind}`：回退目标 + 计数器 + 超限换脑 + 路由级 mind 覆盖。`materialize` 展开为 op-table（escalate 规则在前，排它由顺序 + 条件互斥保证）。计数器活在主 agent 上下文（`--state`），不落 state.csv——插件版主 agent 自然知道轮次；node 版程序主导才需数据化
+- **mind-decider（运行时思维选择）** — 复杂回退（降本、重构）不静态绑定 `routing.mind`：判别失败先路由到策略师判别式（`mod-mind-decider`，产出 chosen_mind + 机械可复算的 basis），读审计证据（成本结构/固定成本占比/可议价空间/失败类型）在运行时选重试思维。端到端已验证：固定成本墙场景选 mind-crusher 而非 mind-reason，回修结果 $12,676 与直接 crusher 运行完全一致（gap 收窄 72%）
 - **T3 协议派发** — `executor.py t3` 从模块 + mind + 依赖产物生成六件套派发（fill/rules/schema/data/write/forbidden）；唯一允许的 subagent prompt 是零引导语文件引用——散文无从包裹协议。**编排与编排审计同样走 T3 派发**（`templates/orchestrator.t3.json` / `templates/audit.t3.json`）
 - **能力插槽** — 模块声明 `skills`/`mcp`；执行器把插槽注入 T3 派发，执行 subagent 直接装配 skill/MCP 而非自行发现
 - **本机能力扫描** — `scripts/discover.py` 物化 `artifacts/capabilities.json`（DSH patch 层的 MCP server + skill 目录 + 运行时补充）；`validate.py` 拒绝任何不在清单中的插槽引用

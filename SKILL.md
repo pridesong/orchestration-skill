@@ -35,7 +35,7 @@ description: 长任务编排引擎。接收任务→模块装配(steps.json 装�
         "task": { "type": "string", "description": "意图浓缩后的任务目标" },
         "constraints": { "type": "array", "items": { "type": "string" }, "description": "用户意图中的隐式约束" },
         "deliverable": { "type": "string", "description": "最终交付物定义" },
-        "template_ref": { "type": "string", "description": "可选：复用的三件套骨架路径" },
+        "template_ref": { "type": "string", "description": "可选：复用的装配表骨架路径（steps.json + minds.json 示例）" },
         "intel_ref": { "type": "string", "description": "可选：情报产物路径" }
       },
       "required": ["task", "deliverable"],
@@ -153,6 +153,11 @@ discriminate_01_verdict=revise → generate_01, revise_count+1, mind: mind-flow 
 **模板内置 mind 分类**：
 | mind | type | role/密度 | 来源 | 用途 |
 |---|---|---|---|---|
+| mind-query | constraint | diagnose/zero | 模块默认（mod-query） | 真实检索，引用可溯源 |
+| mind-reason | constraint | architect/precise | 模块默认（mod-reason） | 显式推导链 |
+| mind-write | constraint | write/precise | 模块默认（mod-generate） | 心流构造 |
+| mind-extract / mind-transform / mind-fill / mind-classify | constraint | execute/precise | 模块默认 | 提取/变换/填充/分类 |
+| mind-verify | constraint | audit/dense | 模块默认（mod-verify） | 对照验收复算 |
 | mind-default | constraint | execute/precise | 五类退化阻断 | 日常执行默认约束 |
 | mind-focus | constraint | execute/precise | 步骤边界 | 防止 scope 扩散 |
 | mind-diagnose | constraint | diagnose/zero | 模态交响乐 | 广域扫视（诊断类步骤） |
@@ -163,6 +168,7 @@ discriminate_01_verdict=revise → generate_01, revise_count+1, mind: mind-flow 
 | mind-orchestration-audit | directive | — | C05/M07/C06 | 编排审计心智 |
 | mind-crusher | directive | — | organs.js CRUSH_STEPS | 翻墙（科研） |
 | mind-anti-goal | directive | — | anti-goal.js | 反目标（科研） |
+| mind-decider | constraint | audit/dense | 策略师（读证据选思维） | 判别失败后运行时选重试思维 |
 
 ## mind 具象化（enforce 四层，mind 从散文升级为协议）
 
