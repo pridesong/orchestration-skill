@@ -63,6 +63,11 @@ def check_steps(steps, op_ids, mind_ids, errors):
         out = s.get("output")
         if out and not out.get("file"):
             errors.append(f"steps.json: 步骤 {sid} 的 output 缺少 file（产物必须物化）")
+        # 能力插槽（step 级补充）：extra_skills / extra_mcp 必须是 string 数组
+        for slot in ("extra_skills", "extra_mcp"):
+            v = s.get(slot)
+            if v is not None and (not isinstance(v, list) or not all(isinstance(x, str) and x for x in v)):
+                errors.append(f"steps.json: 步骤 {sid} 的 {slot} 必须是非空字符串数组（或缺失）")
 
 
 def check_acyclic(steps, errors):
@@ -137,6 +142,14 @@ def main():
             errors.append(f"{name}: JSON 解析失败: {e}")
         except OSError as e:
             errors.append(f"{name}: 读取失败: {e}")
+
+    if "op-table.json" in data:
+        for op in data["op-table.json"].get("operations", []):
+            opid = op.get("id", "?")
+            for slot in ("required_skills", "required_mcp"):
+                v = op.get(slot)
+                if v is not None and (not isinstance(v, list) or not all(isinstance(x, str) and x for x in v)):
+                    errors.append(f"op-table.json: 操作 {opid} 的 {slot} 必须是非空字符串数组（或缺失）")
 
     if "steps.json" in data:
         steps = data["steps.json"].get("steps", [])

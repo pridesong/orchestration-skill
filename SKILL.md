@@ -18,7 +18,8 @@ description: 长任务编排引擎。接收任务→物化三件套(steps.json/o
     "Stage 1 第一层审计：scripts/validate.py 机械校验（必须通过）+ 多路 subagent 独立审计（覆盖度/粒度/可执行性/耦合边界），不通过打回重生成",
     "Stage 2 机械化执行：scripts/executor.py ready <task_dir> 列可执行步骤（前置门禁）；每步派发必须用 executor.py t3 <task_dir> <step_id> 生成 T3 六件套，派发 prompt 只能是 T3FILE:v1 零引导语模板；subagent 执行后 executor.py check <step_id> 验证推进（后置门禁）",
     "Stage 3 动态审计：同一步 3 次同类失败自动 needs_reorchestration，判执行性错误（重试）vs 编排性错误（重新编排）",
-    "Stage 4 收尾：scripts/compare.py 全量验证 + 三件套归档 templates/ 或 examples/"
+    "Stage 4 收尾：scripts/compare.py 全量验证 + 三件套归档 templates/ 或 examples/",
+    "能力插槽：op 需要外部 skill/MCP 时在 op-table 声明 required_skills/required_mcp（非空字符串数组，空=无）；步骤可在 steps 用 extra_skills/extra_mcp 补充；插槽由 executor.py t3 注入 T3 rules，执行者直接装配而非自行发现"
   ],
   "schema": {
     "data": {
@@ -68,11 +69,11 @@ description: 长任务编排引擎。接收任务→物化三件套(steps.json/o
 
 ## 三件套（编排者产出，状态层/原语层/认知层）
 
-| 文件 | 层 | 回答的问题 | 约束 schema |
-|------|-----|-----------|-------------|
-| steps.json | 状态层 | 做什么（步骤+依赖+验收标准） | `schemas/steps.schema.json` |
-| op-table.json | 原语层 | 怎么做（操作原语） | `schemas/op-table.schema.json` |
-| minds.json | 认知层 | 用什么思维做 | `schemas/minds.schema.json` |
+| 文件 | 层 | 回答的问题 | 约束 schema | 能力插槽 |
+|------|-----|-----------|-------------|----------|
+| steps.json | 状态层 | 做什么（步骤+依赖+验收标准） | `schemas/steps.schema.json` | `extra_skills`/`extra_mcp`（步级补充） |
+| op-table.json | 原语层 | 怎么做（操作原语） | `schemas/op-table.schema.json` | `required_skills`/`required_mcp`（op 级声明） |
+| minds.json | 认知层 | 用什么思维做 | `schemas/minds.schema.json` | — |
 
 ## 主 agent 机械命令清单（唯一允许的操作）
 

@@ -19,6 +19,7 @@
 - **三件套契约** — `steps.json`（状态层：做什么）/ `op-table.json`（原语层：怎么做）/ `minds.json`（认知层：用什么思维），全部受 `schemas/` 约束
 - **机械化状态机** — `scripts/executor.py`：`ready`/`check`/`retry`/`reset`/`status`；前置门禁（依赖须 passed）、后置门禁（产物对照 `output.schema` 校验）、非法转移被硬转移表拒绝
 - **T3 协议派发** — `executor.py t3` 从契约 + 依赖产物生成六件套派发（fill/rules/schema/data/write/forbidden）；唯一允许的 subagent prompt 是零引导语文件引用——散文无从包裹协议
+- **能力插槽** — op 声明 `required_skills`/`required_mcp`，步骤可用 `extra_skills`/`extra_mcp` 补充；执行器把插槽注入 T3 派发，执行 subagent 直接装配 skill/MCP 而非自行发现
 - **两层审计** — 静态（多路 subagent 独立审计编排）+ 动态（同一步 3 次同类失败 → `needs_reorchestration`；执行性错误 vs 编排性错误判别）
 - **失败回流** — 失败轨迹回流进模板，引擎对每类任务的编排越用越准
 - **产物物化** — 每步写入任务文件夹；断点续跑、零上下文损耗交接

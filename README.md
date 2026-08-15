@@ -19,6 +19,7 @@ This skill pushes all of it into **structure**: JSON contracts with JSON-Schema 
 - **Three-file contract** — `steps.json` (state layer: what to do), `op-table.json` (primitive layer: how to do it), `minds.json` (cognition layer: which mindset), all schema-constrained under `schemas/`
 - **Mechanical state machine** — `scripts/executor.py`: `ready`/`check`/`retry`/`reset`/`status`. Front gate (dependencies must be passed), back gate (artifacts validated against `output.schema`), illegal transitions rejected by a hard transition table
 - **T3 protocol dispatch** — `executor.py t3` generates the six-piece dispatch (fill/rules/schema/data/write/forbidden) from the contract + dependency artifacts; the only allowed subagent prompt is a zero-lead-in file reference — no prose can wrap the protocol
+- **Capability slots** — ops declare `required_skills`/`required_mcp`, steps add `extra_skills`/`extra_mcp`; the executor injects them into the T3 dispatch so the executing subagent assembles skills/MCP tools directly instead of discovering them
 - **Two-layer audit** — static (multi-agent independent audit of the orchestration) + dynamic (3 same-class failures → `needs_reorchestration`; execution-error vs orchestration-error discrimination)
 - **Failure feedback loop** — failure traces flow back into templates; the engine gets better at orchestrating each task type
 - **Materialized artifacts** — every step writes to the task folder; resume from disk, hand off with zero context loss

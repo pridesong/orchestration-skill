@@ -20,7 +20,17 @@
           },
           "condition": { "type": "string", "description": "触发条件：何时使用此操作" },
           "action": { "type": "string", "description": "执行动作描述" },
-          "verify": { "type": "string", "description": "此操作自身的验证方式" }
+          "verify": { "type": "string", "description": "此操作自身的验证方式" },
+          "required_skills": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "能力插槽（skill）：执行本操作所需加载的 skill 名列表。空数组或缺失 = 无额外 skill。"
+          },
+          "required_mcp": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "能力插槽（MCP）：执行本操作所需调用的 MCP 工具/服务名列表。空数组或缺失 = 无额外 MCP。"
+          }
         }
       }
     }

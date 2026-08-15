@@ -211,6 +211,14 @@ def cmd_t3(task_dir, sid):
         else:
             rules.append(f"思维模式（execute）：机械执行，按 input 与规则产出，不发挥、不加戏。")
 
+    # 能力插槽：op.required_skills/required_mcp + step.extra_skills/extra_mcp（合并去重）→ 注入 rules
+    skills = list(dict.fromkeys([*(op.get("required_skills") or []), *(step.get("extra_skills") or [])]))
+    mcps = list(dict.fromkeys([*(op.get("required_mcp") or []), *(step.get("extra_mcp") or [])]))
+    if skills:
+        rules.append(f"可用 skill（装配，必须加载/遵循）：{', '.join(skills)}")
+    if mcps:
+        rules.append(f"可用 MCP（装配，执行时调用）：{', '.join(mcps)}")
+
     # data：input + 依赖产物内容注入（JSON 或 markdown 原文）
     data = {"input": step.get("input") or {}}
     for dep in step.get("depends_on", []):

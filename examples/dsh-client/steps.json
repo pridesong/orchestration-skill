@@ -1,0 +1,387 @@
+{
+  "task_id": "dsh-client-001",
+  "version": "0.2.0",
+  "created_at": "2026-08-14",
+  "steps": [
+    {
+      "id": "s001",
+      "name": "探查 DSH 协议面与运行服务",
+      "description": "只读探查步：先读 D:\\MyProject\\deepseek-harness 的 docs/api-gateway.md 与 packages/sdk/README.md，梳理 packages/client/connection/（RPC 承载与 /api HTTP 桥）、packages/host/apiproxy/（API 代理）、packages/sdk/protocol/ 与 packages/sdk/server/（stdio JSON-RPC）、apps/cli 的协议入口；确定最小可用协议面（传输类型 custom_rpc_http/jsonrpc_stdio/ws 等、端点地址、认证方式、请求/响应消息格式）；用只读网络探针（超时<=3s，仅探测不发业务请求）检测 http://127.0.0.1:3080 的 api 通道可达性；对全部已读关键文件记录 SHA256 基线（read_only_baseline，供 s008 只读审计比对）；全程只读，禁止修改 DSH 仓库任何文件",
+      "input": {
+        "repo": "D:/MyProject/deepseek-harness",
+        "read_first": [
+          "docs/api-gateway.md",
+          "packages/sdk/README.md"
+        ],
+        "read_second": [
+          "packages/client/connection/",
+          "packages/host/apiproxy/",
+          "packages/sdk/protocol/",
+          "packages/sdk/server/",
+          "apps/cli/"
+        ],
+        "probe_target": "http://127.0.0.1:3080"
+      },
+      "output": {
+        "file": "artifacts/s001_intel.json",
+        "schema": {
+          "required": [
+            "protocol_surface",
+            "live_service",
+            "read_only_baseline",
+            "source_files",
+            "repo_written"
+          ]
+        }
+      },
+      "depends_on": [],
+      "op_ref": "op-query",
+      "mind_ref": "mind-audit",
+      "acceptance_criteria": [
+        "artifacts/s001_intel.json 文件存在且为合法 JSON",
+        "protocol_surface 含 transport/endpoints/auth/message_format 四个键且值均非空",
+        "protocol_surface.transport 为字符串且 ∈ {\"custom_rpc_http\",\"jsonrpc_stdio\",\"ws\",\"websocket\",\"rest\",\"http\",\"http+jsonrpc\",\"jsonrpc\"} 之一（按探查实际结论填写，不得预设）",
+        "protocol_surface.endpoints 为非空数组，每条含 path/method/role 字段且均非空",
+        "live_service 含 reachable（bool）/api_endpoint/checked_at 字段，api_endpoint 与 checked_at 非空",
+        "read_only_baseline 为对象：键为相对 DSH 仓库根的路径（可含子目录），值为 64 位十六进制 sha256，键数 >= 5 且键集合覆盖 docs/api-gateway.md 与 packages/sdk/README.md",
+        "source_files 数组长度 >= 5，每条含 path/role 字段且均非空",
+        "repo_written 字段 == false（本轮未写 DSH 仓库任何文件）"
+      ],
+      "status": "passed"
+    },
+    {
+      "id": "s002",
+      "name": "定义协议消息契约",
+      "description": "基于 s001 探查结论定义最小可用协议契约（客户端与服务端共享接口）：protocol（协议类型 custom_rpc/jsonrpc 与版本，由 s001 探查决定，禁止预设）、方法集（覆盖新建会话/发送消息/接收回复/列举会话/恢复会话五能力）、每个方法的请求必填字段与响应必填字段、错误对象格式、会话模型字段清单、回复模式（完整/流式，视 s001 探查协议而定）、传输决策（类型/端点/认证，引用 s001.protocol_surface；认证为 \"none\" 或具体机制名如 token/trust_check）；契约是 s003/s004/s005/s006 的共同依据，每条契约条目附证据引用（s001 source_files 中的具体文件与键名）",
+      "input": {
+        "from": "s001"
+      },
+      "output": {
+        "file": "artifacts/s002_contract.json",
+        "schema": {
+          "required": [
+            "protocol",
+            "methods",
+            "error_schema",
+            "session_fields",
+            "reply_mode",
+            "transport_decision",
+            "contract_refs"
+          ]
+        }
+      },
+      "depends_on": [
+        "s001"
+      ],
+      "op_ref": "op-generate",
+      "mind_ref": "mind-research",
+      "acceptance_criteria": [
+        "artifacts/s002_contract.json 文件存在且为合法 JSON",
+        "protocol 含 kind/version 字段：kind ∈ {\"custom_rpc\",\"jsonrpc\"} 且与 transport_decision.type 对应（type == \"custom_rpc_http\" → kind == \"custom_rpc\"；type 为 jsonrpc 系 → kind == \"jsonrpc\"）；version 为字符串且非空（kind == \"jsonrpc\" 时 version == \"2.0\"）",
+        "methods 数组长度 >= 5，覆盖 create_session/send_message/receive_reply/list_sessions/resume_session 五个能力，每条含 name/request.required/response.required 字段且 request.required 与 response.required 均为非空数组",
+        "error_schema 含 code 与 message 字段（与真实协议错误对象一致：custom_rpc 的 RpcError 含 code/message/details，jsonrpc 的 error 含 code/message）",
+        "session_fields 数组长度 >= 3 且均为非空字符串",
+        "reply_mode 为字符串且 ∈ {\"complete\",\"streaming\",\"complete+streaming\"} 之一",
+        "transport_decision 含 type/endpoint/auth 字段且均非空；type 与 s001.protocol_surface.transport 一致；auth 为 \"none\"（无认证）或具体认证机制名（如 token/trust_check/bearer）",
+        "contract_refs 数组长度 >= 3，每条含 source/evidence 字段且均非空（引用 s001 探查到的具体文件与键名）"
+      ],
+      "status": "passed"
+    },
+    {
+      "id": "s003",
+      "name": "实现连接层（传输与编解码，按传输决策）",
+      "description": "在 artifacts/dsh_client/ 下实现纯 Python 标准库连接层，传输与编解码严格按 s002.transport_decision 结论执行：dsh_client/protocol.py（帧编解码：决策为 custom_rpc_http 时按 RpcRequest/RpcResponse/RpcError 编解码（RpcResult ok/error 判别，error 含 code/message）；决策为 jsonrpc 系时按 JSON-RPC 2.0 编解码（请求 jsonrpc/id/method/params、响应 result/error.code））、dsh_client/transport.py（custom_rpc_http：基于 http.client 的 POST /api/<namespace>/<method>、载荷仅 {args} 对象；jsonrpc_stdio：基于 subprocess 的 stdio JSON-RPC；ws/websocket 决策：实现标准库最小可行方案，或在产物 ws_decision 中记录明确降级标准）、dsh_client/__init__.py（包导出）；tests/test_transport.py 用标准库本地 mock 验证帧格式，mock 传输方式与决策一致（custom_rpc_http 用 http.server 起本地 HTTP 服务；jsonrpc_stdio 用 subprocess 管道模拟 stdin/stdout；ws 决策用本地 socket 或降级标准）；认证按 s002.transport_decision.auth 条件实现：auth != \"none\" 时 transport 必须实现认证（如 token 头/trust check）且 test_transport.py 含对应断言，auth == \"none\" 时豁免并在 auth_handling 记录；运行 pytest 记录 passed/failed 计数；禁止任何第三方 import",
+      "input": {
+        "from": "s002"
+      },
+      "output": {
+        "file": "artifacts/s003_transport.json",
+        "schema": {
+          "required": [
+            "files",
+            "test_summary",
+            "framing_assertions",
+            "auth_handling"
+          ]
+        }
+      },
+      "depends_on": [
+        "s002"
+      ],
+      "op_ref": "op-build",
+      "mind_ref": "mind-default",
+      "acceptance_criteria": [
+        "artifacts/s003_transport.json 文件存在且为合法 JSON",
+        "files 数组含 artifacts/dsh_client/dsh_client/protocol.py、artifacts/dsh_client/dsh_client/transport.py、artifacts/dsh_client/dsh_client/__init__.py、artifacts/dsh_client/tests/test_transport.py 四个相对路径",
+        "上述四个文件实际存在（机械存在性检查）",
+        "test_summary 含 passed/failed 字段，passed >= 4 且 failed == 0",
+        "framing_assertions 数组长度 >= 3，每条含 assertion/evidence 字段且均非空",
+        "framing_assertions 与 s002.transport_decision.type 结论一致（分支断言）：type == \"custom_rpc_http\" 时断言 POST /api/<namespace>/<method> 路径、载荷仅 {args} 对象、响应按 RpcResponse/RpcError（RpcResult ok/error，error 含 code/message）编解码；type 为 jsonrpc 系（jsonrpc_stdio/jsonrpc/http+jsonrpc）时断言 JSON-RPC 2.0 请求（jsonrpc/id/method/params）与响应（result/error.code）编解码",
+        "JSON-RPC 特有断言仅当结论为 jsonrpc 系时适用：type == \"custom_rpc_http\" 时 framing_assertions 全部 assertion 文本 grep \"jsonrpc\" 与 \"params\" 0 命中；type 为 jsonrpc 系时 grep \"jsonrpc\" 命中 >= 1",
+        "当 s002.transport_decision.type ∈ {\"ws\",\"websocket\"} 时：产物含 ws_decision 字段（对象含 implemented 布尔与 note 字符串）；implemented == true 时 framing_assertions 断言 ws 帧格式；implemented == false 时 note 必须含 \"降级\" 字样并写明降级标准（如：协议编解码以本地 http mock 承载验证、真实 ws 连通不在本次验收范围），且 test_summary 仍满足 passed >= 4",
+        "auth_handling 含 decision/implemented/note 字段：decision 与 s002.transport_decision.auth 一致；当 auth != \"none\" 时 implemented == true 且 test_transport.py 含认证断言（grep \"token\" 或 \"authorization\" 或 \"trust\" 命中 >= 1）；当 auth == \"none\" 时 implemented == false 且 note 记录豁免（无认证要求）",
+        "dsh_client/dsh_client/ 下全部 .py 的 import 无第三方包（grep 检查 requests/websocket/httpx/aiohttp 0 命中，仅标准库与本地模块）"
+      ],
+      "status": "passed"
+    },
+    {
+      "id": "s004",
+      "name": "实现会话/消息客户端 API 层",
+      "description": "基于 s002 契约与 s003 传输层实现高层客户端 API 层：dsh_client/client.py（create_session/send_message/receive_reply(完整与流式)/list_sessions/resume_session 五个方法，方法名与参数按 s002 契约）、dsh_client/__init__.py 导出 API；tests/test_client.py 用注入的 mock 传输断言 API 生成符合契约的请求并正确解析响应；认证按 s002.transport_decision.auth 条件透传/实现：auth != \"none\" 时 client 必须支持认证（如 token 头/trust check）且 test_client.py 含对应断言，auth == \"none\" 时豁免并在 auth_handling 记录；pytest 全部通过并记录计数",
+      "input": {
+        "from": [
+          "s002",
+          "s003"
+        ]
+      },
+      "output": {
+        "file": "artifacts/s004_client.json",
+        "schema": {
+          "required": [
+            "files",
+            "api_methods",
+            "test_summary",
+            "auth_handling"
+          ]
+        }
+      },
+      "depends_on": [
+        "s002",
+        "s003"
+      ],
+      "op_ref": "op-build",
+      "mind_ref": "mind-default",
+      "acceptance_criteria": [
+        "artifacts/s004_client.json 文件存在且为合法 JSON",
+        "files 数组含 artifacts/dsh_client/dsh_client/client.py、artifacts/dsh_client/dsh_client/__init__.py、artifacts/dsh_client/tests/test_client.py 三个相对路径",
+        "上述三个文件实际存在（机械存在性检查）",
+        "api_methods 数组长度 >= 5，覆盖 create_session/send_message/receive_reply/list_sessions/resume_session，每条含 name/implemented 字段且 implemented == true",
+        "test_summary 含 passed/failed 字段，passed >= 4 且 failed == 0",
+        "auth_handling 含 decision/implemented/note 字段：decision 与 s002.transport_decision.auth 一致；当 auth != \"none\" 时 implemented == true 且 test_client.py 含认证断言（grep \"token\" 或 \"authorization\" 或 \"trust\" 命中 >= 1）；当 auth == \"none\" 时 implemented == false 且 note 记录豁免",
+        "dsh_client/dsh_client/ 下全部 .py 的 import 无第三方包（grep 检查 requests/websocket/httpx/aiohttp 0 命中）"
+      ],
+      "status": "passed"
+    },
+    {
+      "id": "s005",
+      "name": "实现交互式 CLI（stdin 驱动行为测试）",
+      "description": "基于 s004 客户端 API 实现交互式 CLI：dsh_client/cli.py（REPL：new/send/list/resume/quit 命令，send 后轮询 receive_reply 直至收到完整回复、逐帧打印流式回复，stdin 读命令、stdout 出结果）；tests/test_cli.py 以 stdin 驱动 CLI 并断言 stdout 输出（非空行为测试，不做存在性检查：如喂入 \"help\\nquit\\n\" 断言用法输出与退出码、喂入 new/send 命令流断言输出含 session id 与回复文本）；`python -m dsh_client --help` 退出码为 0；pytest 全部通过并记录计数",
+      "input": {
+        "from": [
+          "s002",
+          "s004"
+        ]
+      },
+      "output": {
+        "file": "artifacts/s005_cli.json",
+        "schema": {
+          "required": [
+            "files",
+            "test_summary",
+            "cli_behavior",
+            "cli_check"
+          ]
+        }
+      },
+      "depends_on": [
+        "s002",
+        "s004"
+      ],
+      "op_ref": "op-build",
+      "mind_ref": "mind-default",
+      "acceptance_criteria": [
+        "artifacts/s005_cli.json 文件存在且为合法 JSON",
+        "files 数组含 artifacts/dsh_client/dsh_client/cli.py、artifacts/dsh_client/dsh_client/__init__.py、artifacts/dsh_client/tests/test_cli.py 三个相对路径",
+        "上述三个文件实际存在（机械存在性检查）",
+        "tests/test_cli.py 为 stdin 驱动行为测试（grep \"Popen\" 或 \"communicate\" 或 \"stdin\" 命中 >= 1，且 grep \"assert\" 命中 >= 1）",
+        "cli_behavior 数组长度 >= 3，每条含 scenario/stdin/expected_output/passed 字段且 passed == true、expected_output 非空（断言 stdout 实际输出内容，非存在性检查）",
+        "cli_check 含 command（\"python -m dsh_client --help\"）与 exit_code 字段，exit_code == 0",
+        "test_summary 含 passed/failed 字段，passed >= 3 且 failed == 0",
+        "dsh_client/dsh_client/ 下全部 .py 的 import 无第三方包（grep 检查 requests/websocket/httpx/aiohttp 0 命中）"
+      ],
+      "status": "passed"
+    },
+    {
+      "id": "s006",
+      "name": "实现 mock DSH 服务与端到端测试",
+      "description": "实现 mock DSH 协议服务端与端到端测试，mock 协议面与 s002.transport_decision 一致：tests/mock_dsh_server.py（传输方式与决策一致：custom_rpc_http 用标准库 http.server 处理 POST /api/<namespace>/<method> 并解析 {args} 载荷、返回 RpcResponse/RpcError 结构；jsonrpc_stdio 用 stdin/stdout 管道实现 JSON-RPC 2.0 服务端；覆盖全部方法：create_session 返回 session_id、send_message 返回 agent 回复、流式回复按帧分段下发、list_sessions 返回会话列表、resume_session 恢复会话）；tests/test_e2e.py 让真实客户端连接 mock 服务端跑端到端场景：新建会话→发送消息→接收完整回复→接收流式回复→列举会话→恢复会话，同时断言客户端发出的请求报文与 mock 收到的报文符合 s002 契约（按传输决策逐项核对：custom_rpc_http 断言 POST /api/<ns>/<method> 与 {args} 载荷字段；jsonrpc 系断言 method/params 字段）；pytest 全绿并记录 passed/failed 计数；mock 层与测试文件禁止第三方 import",
+      "input": {
+        "from": [
+          "s002",
+          "s004"
+        ]
+      },
+      "output": {
+        "file": "artifacts/s006_e2e.json",
+        "schema": {
+          "required": [
+            "files",
+            "scenarios",
+            "test_summary",
+            "protocol_assertions"
+          ]
+        }
+      },
+      "depends_on": [
+        "s002",
+        "s004"
+      ],
+      "op_ref": "op-test",
+      "mind_ref": "mind-default",
+      "acceptance_criteria": [
+        "artifacts/s006_e2e.json 文件存在且为合法 JSON",
+        "files 数组含 artifacts/dsh_client/tests/mock_dsh_server.py 与 artifacts/dsh_client/tests/test_e2e.py 两个相对路径且两文件实际存在",
+        "scenarios 数组长度 >= 5，覆盖 create_session/send_reply_complete/send_reply_streaming/list_sessions/resume_session 五个场景，每条含 name/passed 字段且 passed == true",
+        "test_summary 含 passed/failed 字段，passed >= 5 且 failed == 0",
+        "protocol_assertions 数组长度 >= 4，每条含 assertion/evidence 字段且均非空，断言 mock 收到的请求符合 s002 契约（与 s002.transport_decision 分支一致：method 与 s002.methods 对应条目 name 一致、请求参数键名覆盖契约 required 字段；custom_rpc_http 分支额外断言载荷为 {args} 对象）",
+        "artifacts/dsh_client/tests/ 下新增 .py 文件无第三方 import（grep 检查 requests/websocket/httpx/aiohttp 0 命中）"
+      ],
+      "status": "passed"
+    },
+    {
+      "id": "s007",
+      "name": "真实连通验证（条件执行）",
+      "description": "依据 s001.live_service.reachable 与 s002.transport_decision 条件执行：reachable == true 时，用 s004 客户端对真实 api 通道执行 create_session/send_message/receive_reply/list_sessions 冒烟验证，逐操作记录 op/status/sample，status == \"failed\" 的条目必须记录非空 reason；reachable == false 时，记录 live_verified=false 与具体失败原因（连接拒绝/超时/非协议响应），验证结论以 s006 mock 端到端为准；live_verified 语义为\"冒烟操作全部成功\"——reachable == true 但任一冒烟操作失败时 live_verified == false 并在 evidence 如实记录失败操作与原因，不掩盖；任何情况下不得向 DSH 仓库写入任何文件",
+      "input": {
+        "from": [
+          "s001",
+          "s004"
+        ]
+      },
+      "output": {
+        "file": "artifacts/s007_live.json",
+        "schema": {
+          "required": [
+            "live_verified",
+            "attempted",
+            "evidence",
+            "reason",
+            "repo_untouched"
+          ]
+        }
+      },
+      "depends_on": [
+        "s001",
+        "s004"
+      ],
+      "op_ref": "op-verify",
+      "mind_ref": "mind-default",
+      "acceptance_criteria": [
+        "artifacts/s007_live.json 文件存在且为合法 JSON",
+        "attempted 为 bool 且 == true",
+        "evidence 数组非空，每条含 op/status 字段且 status ∈ {\"ok\",\"failed\"}；status == \"failed\" 的条目必须含非空 reason 字段；status == \"ok\" 的条目含非空 sample 字段",
+        "live_verified == (s001.live_service.reachable == true 且 evidence 中全部条目 status == \"ok\")（机械一致：冒烟操作全部成功才算 live_verified）",
+        "当 s001.live_service.reachable == true：evidence 数组长度 >= 2（冒烟操作至少 2 个）；若存在 status == \"failed\" 条目则 live_verified == false 且失败条目含非空 reason（如实报告，不掩盖）",
+        "当 s001.live_service.reachable == false：live_verified == false，reason 字段非空且含 \"连接拒绝\"/\"超时\"/\"非协议响应\" 之一，evidence 非空且记录尝试细节",
+        "repo_untouched 字段 == true（真实验证过程未写 DSH 仓库任何文件）"
+      ],
+      "status": "passed"
+    },
+    {
+      "id": "s008",
+      "name": "独立审计（只读基线/包完整/测试复现/契约符合/e2e 复核）",
+      "description": "独立复核全链路：(1) 全量重算 s001.read_only_baseline 覆盖文件的 SHA256 并与基线逐一比对，mismatches 非空即 fail（证明 DSH 仓库未被修改）；(2) 核对 artifacts/dsh_client/ 包结构完整（protocol/transport/client/cli/__init__ + tests 全套含 test_cli.py + README 存在）；(3) 重跑完整 pytest 套件（transport/client/cli/e2e）核对 passed 计数与 s003/s004/s005/s006 记录之和一致且 failed == 0；(4) 抽查客户端请求报文符合 s002 契约（方法名与参数键名逐项核对，按传输决策分支）；(5) 独立重跑 s006 e2e 场景，场景计数与 s006.scenarios 数组长度一致且全部 passed（s006 场景自报 passed 由本步复核）；(6) artifacts/dsh_client/ 下全部 .py 无第三方 import；(7) 逐项核对 s001-s007 各步 JSON 产物 required 字段齐全；产出逐项审计报告（每项 check 含 id/description/passed/evidence，必须覆盖 repo_unchanged/package_complete/tests_reproducible/contract_adherence/no_third_party_deps/artifacts_complete/e2e_scenarios_reproducible）",
+      "input": {
+        "from": [
+          "s001",
+          "s002",
+          "s003",
+          "s004",
+          "s005",
+          "s006",
+          "s007"
+        ]
+      },
+      "output": {
+        "file": "artifacts/s008_audit.json",
+        "schema": {
+          "required": [
+            "checks",
+            "repo_unchanged",
+            "package_complete",
+            "tests_reproducible",
+            "contract_adherence",
+            "no_third_party_deps",
+            "e2e_scenarios_reproducible",
+            "summary"
+          ]
+        }
+      },
+      "depends_on": [
+        "s001",
+        "s002",
+        "s003",
+        "s004",
+        "s005",
+        "s006",
+        "s007"
+      ],
+      "op_ref": "op-audit",
+      "mind_ref": "mind-audit",
+      "acceptance_criteria": [
+        "artifacts/s008_audit.json 文件存在且为合法 JSON",
+        "checks 数组长度 >= 7，每条含 id/description/passed/evidence 字段",
+        "checks 含 id ∈ {repo_unchanged, package_complete, tests_reproducible, contract_adherence, no_third_party_deps, artifacts_complete, e2e_scenarios_reproducible} 的全部条目",
+        "所有 check.passed == true",
+        "repo_unchanged 含 pass/checked_files/mismatches 字段；checked_files 数组 == s001.read_only_baseline 键集合；mismatches 为空数组且 pass == true",
+        "package_complete 含 pass/required_files 字段；required_files 数组长度 >= 10 且包含 dsh_client/protocol.py、dsh_client/transport.py、dsh_client/client.py、dsh_client/cli.py、dsh_client/__init__.py、tests/test_transport.py、tests/test_client.py、tests/test_cli.py、tests/test_e2e.py、tests/mock_dsh_server.py、README.md 全部路径；列出的文件全部实际存在；pass == true",
+        "tests_reproducible 含 pass/re_run_passed/failed 字段；failed == 0 且 re_run_passed == s003.test_summary.passed + s004.test_summary.passed + s005.test_summary.passed + s006.test_summary.passed（机械复算一致）；pass == true",
+        "contract_adherence 含 pass/checked_methods 字段；checked_methods 数组长度 >= 5，每条含 method/fields_ok 字段且 fields_ok == true；pass == true",
+        "e2e_scenarios_reproducible 含 pass/scenario_count/expected_count 字段；scenario_count == s006.scenarios 数组长度（机械一致）且全部场景 passed == true；pass == true（独立重跑 s006 e2e 场景复核）",
+        "no_third_party_deps 含 pass 字段且 == true（grep artifacts/dsh_client/ 下全部 .py 的 import 无 requests/websocket/httpx/aiohttp）",
+        "artifacts_complete 含 pass/missing 字段；missing 为空数组且 pass == true",
+        "summary 含 pass 字段且 == true"
+      ],
+      "status": "passed"
+    },
+    {
+      "id": "s009",
+      "name": "物化交付物（README + 验证结果报告）",
+      "description": "撰写交付文档与最终报告：artifacts/dsh_client/README.md（安装/快速开始/命令清单/协议说明（按 s002 传输决策描述实际协议：custom_rpc_http 的 POST /api/<ns>/<method> 与 {args} 载荷，或 jsonrpc_stdio 的 stdio JSON-RPC）/错误处理与超时策略/mock 与真实连通性测试运行说明/限制），artifacts/s009_report.md 验证结果报告按固定章节（概览/协议探查结论/协议契约/实现结构/测试结果/真实连通性/审计结论/限制）撰写，每条结论附产物字段引用（形如 artifacts/s007_live.json#live_verified）；报告含复现小节（pytest 运行命令）与限制小节；最终全量重跑 pytest 一次并把结果写入报告（含 passed= 与 failed=0 字样）；禁止主观非证据性表述",
+      "input": {
+        "from": [
+          "s001",
+          "s002",
+          "s003",
+          "s004",
+          "s005",
+          "s006",
+          "s007",
+          "s008"
+        ]
+      },
+      "output": {
+        "file": "artifacts/s009_report.md",
+        "schema": {
+          "required": []
+        }
+      },
+      "depends_on": [
+        "s001",
+        "s002",
+        "s003",
+        "s004",
+        "s005",
+        "s006",
+        "s007",
+        "s008"
+      ],
+      "op_ref": "op-materialize",
+      "mind_ref": "mind-default",
+      "acceptance_criteria": [
+        "artifacts/s009_report.md 文件存在",
+        "artifacts/dsh_client/README.md 文件存在",
+        "README.md 含 \"## 安装\"、\"## 快速开始\"、\"## 命令\"、\"## 测试\"、\"## 协议说明\"、\"## 限制\" 六个标题（grep 逐个命中 >= 1）",
+        "README.md 含至少 1 处 \"python -m dsh_client\" 用法示例",
+        "README.md 含 \"mock\" 字样（grep 命中 >= 1，说明 mock 验证方式）",
+        "README.md 含错误处理与超时策略说明（grep \"超时\" 或 \"timeout\" 命中 >= 1）",
+        "报告含章节标题：\"概览\"、\"协议探查结论\"、\"协议契约\"、\"实现结构\"、\"测试结果\"、\"真实连通性\"、\"审计结论\"、\"限制\" 至少 7 个（grep 逐个命中 >= 1）",
+        "报告含产物字段引用行（匹配 artifacts/s0[0-9]{2}_[a-z_]+.json#[A-Za-z0-9_.]+）>= 6 行",
+        "报告不含 \"看起来\"、\"貌似\"、\"感觉\"、\"似乎\"、\"我认为\"、\"我觉得\"、\"显然\"（grep 0 命中）",
+        "报告含 \"复现\" 小节且含 pytest 运行命令（grep \"pytest\" 命中 >= 2）",
+        "报告含 \"failed=0\" 字样（最终全量测试结果，grep 命中 >= 1）"
+      ],
+      "status": "passed"
+    }
+  ]
+}

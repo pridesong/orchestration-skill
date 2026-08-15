@@ -44,6 +44,16 @@
           },
           "op_ref": { "type": "string", "pattern": "^op-" },
           "mind_ref": { "type": "string", "pattern": "^mind-" },
+          "extra_skills": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "能力插槽（skill）步级补充：本步骤额外需要的 skill（与 op.required_skills 合并，去重）。空数组或缺失 = 无补充。"
+          },
+          "extra_mcp": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "能力插槽（MCP）步级补充：本步骤额外需要的 MCP 工具/服务（与 op.required_mcp 合并，去重）。空数组或缺失 = 无补充。"
+          },
           "acceptance_criteria": {
             "type": "array",
             "minItems": 1,

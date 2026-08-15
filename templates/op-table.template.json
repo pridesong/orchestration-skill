@@ -6,7 +6,9 @@
       "category": "query",
       "condition": "需要外部信息",
       "action": "检索/查询并物化结果到 artifacts/",
-      "verify": "结果物化为文件，引用可溯源"
+      "verify": "结果物化为文件，引用可溯源",
+      "required_skills": [],
+      "required_mcp": []
     },
     {
       "id": "op-generate",
@@ -14,7 +16,9 @@
       "category": "generate",
       "condition": "需要产出新内容",
       "action": "按 input 生成 output，物化到 artifacts/",
-      "verify": "产物满足 acceptance_criteria"
+      "verify": "产物满足 acceptance_criteria",
+      "required_skills": [],
+      "required_mcp": []
     },
     {
       "id": "op-verify",
@@ -22,7 +26,9 @@
       "category": "verify",
       "condition": "需要确认正确性",
       "action": "对照验收标准或工具复算（如断言分类、恒等式检测）",
-      "verify": "验证记录物化到 artifacts/"
+      "verify": "验证记录物化到 artifacts/",
+      "required_skills": [],
+      "required_mcp": []
     },
     {
       "id": "op-materialize",
@@ -30,7 +36,9 @@
       "category": "materialize",
       "condition": "需要持久化状态",
       "action": "写文件/更新 steps.json 状态",
-      "verify": "文件存在且 schema 合规"
+      "verify": "文件存在且 schema 合规",
+      "required_skills": [],
+      "required_mcp": []
     }
   ]
 }

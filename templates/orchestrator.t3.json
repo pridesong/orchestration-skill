@@ -29,7 +29,9 @@
           "category": "query|generate|verify|audit|materialize|transform|custom",
           "condition": "",
           "action": "",
-          "verify": ""
+          "verify": "",
+          "required_skills": [],
+          "required_mcp": []
         }
       ]
     },
@@ -46,7 +48,7 @@
   },
   "fill": [
     "steps.json.steps: complete step sequence per data.task; every step gets id/name/output/depends_on/op_ref/mind_ref/acceptance_criteria/status=pending",
-    "op-table.json.operations: define only ops actually referenced by steps; reuse template ops (op-query/op-generate/op-verify/op-materialize) when they fit",
+    "op-table.json.operations: define only ops actually referenced by steps; reuse template ops (op-query/op-generate/op-verify/op-materialize) when they fit; declare required_skills/required_mcp when an op needs an external capability",
     "minds.json.minds: define minds referenced by steps; reference existing mind params (mind-default/mind-audit) when they fit"
   ],
   "rules": [
@@ -57,7 +59,8 @@
     "minimize depends_on: parallel-first, independent steps must not be serialized",
     "reuse ops: do not create new operations when existing ones suffice; keep op vocabulary convergent",
     "failure containment: a step's failure must affect only that step, not propagate downstream",
-    "mind matching: exploration/audit steps use mind-audit; mechanical execution steps use mind-default; reuse existing mind-params instead of inventing new ones"
+    "mind matching: exploration/audit steps use mind-audit; mechanical execution steps use mind-default; reuse existing mind-params instead of inventing new ones",
+    "capability slots: when an op needs an external skill or MCP tool, declare it on the op (required_skills / required_mcp, non-empty-string arrays; empty = none); a step may add step-level extras (extra_skills / extra_mcp) on top of its op; these slots are injected into the T3 dispatch so the executor assembles them directly instead of discovering them"
   ],
   "schema": {
     "steps": "schemas/steps.schema.json",
