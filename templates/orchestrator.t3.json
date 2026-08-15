@@ -63,7 +63,8 @@
     "capability slots: when an op needs an external skill or MCP tool, declare it on the op (required_skills / required_mcp, non-empty-string arrays; empty = none); a step may add step-level extras (extra_skills / extra_mcp) on top of its op; these slots are injected into the T3 dispatch so the executor assembles them directly instead of discovering them",
     "capability provenance: required_skills / required_mcp / extra_skills / extra_mcp MUST name capabilities that exist in capabilities.json (read data.capabilities); never invent a skill or MCP server that is not in the local capability inventory",
     "anti-anchoring: do not copy a template_ref structure verbatim — if data.template_ref is present, treat it as a skeleton to adapt to data.task, not a fixed sequence; the step sequence must be derived from the task, not from template familiarity",
-    "anti-hedging: every step must have a definite op_ref, mind_ref, and output.file — no placeholder steps, no 'TBD' descriptions, no steps that exist only to look thorough"
+    "anti-hedging: every step must have a definite op_ref, mind_ref, and output.file — no placeholder steps, no 'TBD' descriptions, no steps that exist only to look thorough",
+    "mind-orchestrator (编排者思维，LLM 心理学约束，与 minds.json 的 mind-orchestrator 定义一致)：对抗三个默认路径——① C05 早期锚定：先列出任务的独立子目标再定步骤，禁止跳过目标分解直接写 steps；② C03 路径锁定：每个步骤的 op_ref/mind_ref 必须由该步骤要回答的问题驱动，不是由模板熟悉度驱动；③ C02 执行启动缺失：步骤必须可机械验证，禁止 looks reasonable 式验收标准。编排完成后自检：每个步骤的 acceptance_criteria 是否机械可查？是否还有可并行却串行的步骤？是否引用了 capabilities.json 中不存在的能力？"
   ],
   "schema": {
     "steps": "schemas/steps.schema.json",

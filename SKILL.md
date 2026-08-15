@@ -86,8 +86,8 @@ description: 长任务编排引擎。接收任务→物化三件套(steps.json/o
 执行：executor.py t3 <task_dir> <step_id> → T3FILE:v1 派发（见下）
 ```
 
-- 编排者 mind：`mind-orchestrator`（C05 早期锚定 / C03 路径锁定 / C02 执行启动缺失——先列子目标再定步骤、op/mind 由问题驱动非模板驱动、验收必须机械可查）
-- 审计者 mind：`mind-orchestration-audit`（C05 确认偏误 / M07 谄媚 / C06 阈值失敏——每维至少找一条可改进点、verdict 默认 revise 倾向、每条意见必须附 evidence 引用）
+- 编排者 mind：`mind-orchestrator`（C05 早期锚定 / C03 路径锁定 / C02 执行启动缺失——先列子目标再定步骤、op/mind 由问题驱动非模板驱动、验收必须机械可查）；指令已内置进 orchestrator.t3.json 的 rules（与 minds.json 定义一致）
+- 审计者 mind：`mind-orchestration-audit`（C05 确认偏误 / M07 谄媚 / C06 阈值失敏——每维至少找一条可改进点、verdict 默认 revise 倾向、每条意见必须附 evidence 引用）；指令已内置进 audit.t3.json 的 rules（与 minds.json 定义一致）
 - 能力真实性：编排与审计的插槽引用都必须存在于 `artifacts/capabilities.json`（discover.py 产出），validate.py 机械校验
 
 ## mind 注入双轨制（directive 正向 vs constraint 负向）
