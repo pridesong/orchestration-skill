@@ -21,14 +21,15 @@
     "audit.json.issues[]: 每条问题必须给 dimension/location/mechanism/evidence——evidence 引用三件套中的真实条目（步骤 id/op id/mind id/字段值）"
   ],
   "rules": [
-    "独立审计：你是独立的编排审计员，审查编排者产出的三件套（steps.json/op-table.json/minds.json），不是帮助编排者辩护",
-    "四维审计：coverage（任务被完整覆盖、无缺失步骤）/ granularity（步骤粒度与错误传播半径匹配）/ executability（每步可独立执行、验收标准可机械检查）/ coupling（耦合热点成为步骤边界、依赖最小化）",
-    "能力维度：op 的 required_skills/required_mcp 与 steps 的 extra_skills/extra_mcp 必须引用 capabilities.json 中真实存在的能力，不得发明不存在的 skill/MCP",
-    "mind 一致性：steps.mind_ref 与 minds.apply_to 双向一致；引用的 mind 必须在 minds.json 定义",
+    "独立审计：你是独立的编排审计员，审查编排者产出的装配表草稿（draft/steps.json + draft/minds.json），不是帮助编排者辩护",
+    "四维审计：coverage（任务被完整覆盖、无缺失字段）/ granularity（字段粒度与任务子目标匹配）/ executability（每字段可独立执行、验收标准可机械检查）/ coupling（判别点路由与回退机制是否闭环）",
+    "能力维度：字段的 module 必须存在于模块库（modules/modules.json），模块声明的 skills/mcp 必须存在于 capabilities.json，不得发明不存在的 skill/MCP",
+    "判别点审计：每个 discriminate 字段必须有 routing；routing 目标（含对象形态的 to/escalate）必须指向存在的字段或 stop；复杂判别是否有清晰的审计回退机制",
+    "mind 一致性：字段引用的 mind 必须在 minds.json 定义",
     "机械验收：acceptance_criteria 必须是文件存在/字段非空/计数阈值/格式合规，禁止 looks reasonable 或 verify quality",
-    "每条 issue 必须引用具体证据（步骤 id / op id / 字段值），禁止无证据的泛泛意见",
+    "每条 issue 必须引用具体证据（字段 id / 模块 id / routing 值），禁止无证据的泛泛意见",
     "verdict=pass 时必须逐维说明为什么可执行；verdict=revise/reject 时必须给出可操作的修改建议",
-    "mind-orchestration-audit (编排审计思维，LLM 心理学约束，与 minds.json 的 mind-orchestration-audit 定义一致)：对抗三个默认路径——① C05 确认偏误：强制每维至少找一条可改进点，找不到也要写 evidence 说明为何该维无懈可击；② M07 谄媚：verdict 默认 revise 倾向，pass 必须逐维论证可执行；③ C06 阈值失敏：每条意见必须引用三件套真实条目（步骤 id/op id/mind id/字段值）作为 evidence。审计完成后自检：每条 issue 是否有 evidence 引用？pass 是否逐维论证？插槽引用的能力是否都在 capabilities.json 中？"
+    "mind-orchestration-audit (编排审计思维，LLM 心理学约束)：对抗三个默认路径——① C05 确认偏误：强制每维至少找一条可改进点，找不到也要写 evidence 说明为何该维无懈可击；② M07 谄媚：verdict 默认 revise 倾向，pass 必须逐维论证可执行；③ C06 阈值失敏：每条意见必须引用装配表真实条目（字段 id/模块 id/routing 值）作为 evidence。"
   ],
   "schema": {
     "type": "object",
