@@ -1,0 +1,10 @@
+{
+  "name": "orchestration-executor-tools",
+  "version": "0.1.0",
+  "kind": "dsh-dynamic-cordis-plugin",
+  "description": "把 orchestration-skill 的机械命令（status/ready/t3/check/validate/materialize）包装成 6 个模型工具，主 agent 调工具而非读协议敲命令",
+  "tools": ["orch_status", "orch_ready", "orch_t3", "orch_check", "orch_validate", "orch_materialize"],
+  "requires": ["shell"],
+  "host": "host.js",
+  "notes": "动态插件进程内生效，重启即失；SKILL_ROOT 常量需按部署环境调整"
+}

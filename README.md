@@ -90,6 +90,7 @@ modules/            # the module library (produce + mind + output_schema + forbi
 scripts/            # discover.py / validate.py / executor.py / compare.py (pure stdlib)
 templates/          # assembly templates + orchestrator T3 + audit T3 + minds parameter sets
 examples/           # demo-task (linear), bad-example (negative), eco-analysis (research), quant-adaptive (parallel), dsh-client (discriminator routing)
+plugin/             # optional DSH integration: orchestration-executor-tools (6 model tools wrapping executor.py)
 ```
 
 Task directories live **outside this repo** — create `<project>/<task_id>/` in the user's project folder, never inside the skill install directory.
