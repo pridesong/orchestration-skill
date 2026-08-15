@@ -123,6 +123,30 @@ def check_mind_backrefs(steps, minds, errors):
             )
 
 
+def check_mind_enforce(task_dir, minds, errors):
+    """mind.enforce.check 的 source 必须存在（机械门禁的前提条件）。
+
+    enforce.check 只在 type=evidence_in_source 时校验：field 非空、
+    source 文件存在。缺失 = 门禁无法执行 = 编排错误。
+    """
+    for m in minds:
+        mid = m.get("id", "?")
+        enforce = m.get("enforce") or {}
+        check = enforce.get("check") or {}
+        if not check:
+            continue
+        if check.get("type") != "evidence_in_source":
+            errors.append(f"minds.json: mind {mid} 的 enforce.check.type 仅支持 evidence_in_source（当前 {check.get('type')}）")
+            continue
+        if not check.get("field"):
+            errors.append(f"minds.json: mind {mid} 的 enforce.check 缺少 field")
+        src = check.get("source")
+        if not src:
+            errors.append(f"minds.json: mind {mid} 的 enforce.check 缺少 source")
+        elif not os.path.exists(os.path.join(task_dir, src)):
+            errors.append(f"minds.json: mind {mid} 的 enforce.check.source 不存在: {src}")
+
+
 def check_capability_slots(task_dir, data, errors):
     """插槽引用的能力必须存在于 capabilities.json（若存在该文件）。
 
@@ -207,6 +231,7 @@ def main():
         minds = data["minds.json"].get("minds", [])
         if "steps.json" in data:
             check_mind_coverage(data["steps.json"].get("steps", []), minds, errors)
+        check_mind_enforce(task_dir, minds, errors)
 
     check_capability_slots(task_dir, data, errors)
 

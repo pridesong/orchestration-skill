@@ -14,6 +14,27 @@
         "gate": "I2",
         "principle": "看起来完美的数字先过工具审计（数学恒等式/定义恒等/泰勒恒等），再当证据"
       },
+      "enforce": {
+        "fill": ["每条结论必须附 evidence 字段，值为来源文件原文片段（非路径引用）"],
+        "schema": {
+          "properties": {
+            "evidence": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "证据：来源文件原文片段，必须逐字出现在输入材料中"
+            }
+          }
+        },
+        "forbidden": [
+          "禁止用路径式引用（如 材料/决策/D1）充当证据——evidence 必须包含来源文件的原文片段",
+          "禁止无证据断言——每条结论必须能溯源到输入材料"
+        ],
+        "check": {
+          "type": "evidence_in_source",
+          "field": "evidence",
+          "source": "artifacts/material.md"
+        }
+      },
       "apply_to": []
     },
     {

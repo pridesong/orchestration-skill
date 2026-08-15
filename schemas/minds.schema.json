@@ -17,7 +17,43 @@
           "name": { "type": "string", "minLength": 1 },
           "params": {
             "type": "object",
-            "description": "思维参数：自由结构，引用已有 mind-params 体系（如 CONCEPT_BIRTH_LOOP、INTERPRET_LAYER 参数槽）"
+            "description": "思维参数：自由结构 + enforce 具象化四层（fill/schema/forbidden/check）。enforce 由 executor.py t3 合并进派发，check 由 executor.py check 机械执行——mind 从散文升级为协议。"
+          },
+          "enforce": {
+            "type": "object",
+            "description": "mind 具象化四层：把认知要求映射为可机械执行的协议约束（可选，缺失=仅散文指令）",
+            "properties": {
+              "fill": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "强制产出要求（追加到 T3 fill）：如 '每条结论必须附 evidence 字段'"
+              },
+              "schema": {
+                "type": "object",
+                "description": "产物结构强化（合并进 T3 schema）：如 { evidence: {type:'string', description:'材料原文片段'} }"
+              },
+              "forbidden": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "禁止行为（追加到 T3 forbidden）：如 '禁止用路径引用充当证据'"
+              },
+              "check": {
+                "type": "object",
+                "description": "机械验证门禁（executor.py check 执行）",
+                "properties": {
+                  "type": { "enum": ["evidence_in_source"] },
+                  "field": {
+                    "type": "string",
+                    "description": "产物中要验证的字段名（递归收集所有同名字段值）"
+                  },
+                  "source": {
+                    "type": "string",
+                    "description": "证据来源文件相对路径（任务目录内），evidence 值必须作为子串出现在其中"
+                  }
+                },
+                "required": ["type", "field", "source"]
+              }
+            }
           },
           "apply_to": {
             "type": "array",

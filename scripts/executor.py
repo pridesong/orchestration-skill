@@ -8,6 +8,8 @@ executor.py — 状态机执行器（机械化执行的强制者）
   3. 后置门禁：产物未通过检查不允许标记 passed
   4. 失败轨迹：记录 failure_log；同一步 3 次同类失败自动标记 needs_reorchestration
   5. 断点续跑：状态唯一真相源 = steps.json 文件，原子写回
+  6. mind 具象化：mind 的 enforce 四层（fill/schema/forbidden/check）合并进 T3 派发；
+     check 机械执行证据门禁（evidence_in_source）——mind 从散文升级为协议
 
 约束与执行分离：executor 只做机械约束，任务执行由 subagent 完成。
 
@@ -130,6 +132,76 @@ def check_artifacts(task_dir, step):
     return (len(issues) == 0), issues
 
 
+def collect_field_values(node, field):
+    """递归收集产物中所有名为 field 的值（字符串或字符串数组展开）。"""
+    found = []
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if k == field:
+                if isinstance(v, list):
+                    for item in v:
+                        if isinstance(item, str):
+                            found.append(item)
+                        elif isinstance(item, dict) and isinstance(item.get("text"), str):
+                            found.append(item["text"])
+                elif isinstance(v, str):
+                    found.append(v)
+            else:
+                found.extend(collect_field_values(v, field))
+    elif isinstance(node, list):
+        for item in node:
+            found.extend(collect_field_values(item, field))
+    return found
+
+
+def normalize_text(s):
+    """折叠空白用于子串比较（材料原文换行/缩进与 evidence 摘录可能不同）。"""
+    return " ".join(s.split())
+
+
+def check_mind_gates(task_dir, step, minds):
+    """执行 mind 的 enforce.check 机械门禁（evidence_in_source 原文验证）。
+
+    返回 (ok, issues[])。产物中 field 的每个值必须作为子串出现在
+    source 文件中（空白折叠后比较）——路径引用/自指引用会被拒。
+    """
+    out = step.get("output") or {}
+    fname = out.get("file")
+    if not fname:
+        return True, []
+    mind = minds.get(step.get("mind_ref"))
+    if not mind:
+        return True, []
+    check = (mind.get("enforce") or {}).get("check")
+    if not check or check.get("type") != "evidence_in_source":
+        return True, []
+
+    fpath = os.path.join(task_dir, fname)
+    if not os.path.exists(fpath):
+        return True, []  # 产物缺失由 check_artifacts 拦，这里不重复报
+    try:
+        with open(fpath, "r", encoding="utf-8-sig") as f:
+            content = json.load(f)
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return True, []  # 非法 JSON 由 check_artifacts 拦
+
+    src_path = os.path.join(task_dir, check["source"])
+    if not os.path.exists(src_path):
+        return False, [f"mind 门禁 {check['type']}: 证据来源文件缺失 {check['source']}"]
+    with open(src_path, "r", encoding="utf-8-sig") as f:
+        src_norm = normalize_text(f.read())
+
+    field = check["field"]
+    values = collect_field_values(content, field)
+    issues = []
+    for v in values:
+        if not v.strip():
+            issues.append(f"mind 门禁 {check['type']}: {field} 存在空值")
+        elif normalize_text(v) not in src_norm:
+            issues.append(f"mind 门禁 {check['type']}: {field} 值不在来源文件中（路径引用/自指？）: {v[:60]}")
+    return (len(issues) == 0), issues
+
+
 # ---------- 命令实现 ----------
 
 def cmd_status(task_dir):
@@ -179,6 +251,24 @@ def load_table(task_dir, fname, key):
         return json.load(f).get(key, [])
 
 
+def merge_schema(base, extra):
+    """合并产物 schema 与 enforce.schema（extra 覆盖同名键，required 并集）。
+
+    两者都是 {required: [...], properties: {...}} 形态的宽松结构。
+    """
+    if not extra:
+        return base
+    merged = {**base}
+    if extra.get("required") or base.get("required"):
+        merged["required"] = list(dict.fromkeys(
+            [*(base.get("required") or []), *(extra.get("required") or [])]
+        ))
+    props = {**(base.get("properties") or {}), **(extra.get("properties") or {})}
+    if props:
+        merged["properties"] = props
+    return merged
+
+
 def cmd_t3(task_dir, sid):
     """从三件套 + 依赖产物生成该步骤的 T3 六件套（fill/rules/schema/data/write/forbidden），
     写入 dispatch/<sid>.t3.json，并打印派发 prompt（T3FILE:v1 零引导语）。
@@ -213,6 +303,13 @@ def cmd_t3(task_dir, sid):
         else:
             rules.append(f"思维模式（execute）：机械执行，按 input 与规则产出，不发挥、不加戏。")
 
+    # mind 具象化：enforce 四层（fill/schema/forbidden/check）合并进派发——mind 从散文升级为协议
+    enforce = mind.get("enforce") if mind else None
+    enforce_fill = (enforce or {}).get("fill") or []
+    enforce_schema = (enforce or {}).get("schema") or {}
+    enforce_forbidden = (enforce or {}).get("forbidden") or []
+    enforce_check = (enforce or {}).get("check")
+
     # 能力插槽：op.required_skills/required_mcp + step.extra_skills/extra_mcp（合并去重）→ 注入 rules
     skills = list(dict.fromkeys([*(op.get("required_skills") or []), *(step.get("extra_skills") or [])]))
     mcps = list(dict.fromkeys([*(op.get("required_mcp") or []), *(step.get("extra_mcp") or [])]))
@@ -241,9 +338,9 @@ def cmd_t3(task_dir, sid):
                 data[dep] = f.read()
 
     t3 = {
-        "fill": (step.get("output") or {}).get("schema", {}).get("required", []),
+        "fill": (step.get("output") or {}).get("schema", {}).get("required", []) + enforce_fill,
         "rules": rules,
-        "schema": (step.get("output") or {}).get("schema", {}),
+        "schema": merge_schema((step.get("output") or {}).get("schema", {}), enforce_schema),
         "data": data,
         "write": (step.get("output") or {}).get("file", ""),
         "forbidden": [
@@ -252,7 +349,8 @@ def cmd_t3(task_dir, sid):
             "产物必须满足全部验收标准（rules 中逐条列出），机械可检查",
             "不得引用输入数据中不存在的事实",
             "JSON 产物必须是合法 JSON，字段严格符合 schema（禁止多余顶层字段）",
-        ],
+        ] + enforce_forbidden,
+        "check": enforce_check,
     }
     ddir = os.path.join(task_dir, "dispatch")
     os.makedirs(ddir, exist_ok=True)
@@ -288,6 +386,14 @@ def cmd_check(task_dir, sid):
 
     # 后置门禁：产物检查
     ok, issues = check_artifacts(task_dir, step)
+
+    # mind 具象化门禁：evidence 原文验证（mind 从散文升级为协议，check 机械执行）
+    if ok:
+        minds = {m["id"]: m for m in load_table(task_dir, "minds.json", "minds")}
+        ok2, issues2 = check_mind_gates(task_dir, step, minds)
+        ok = ok and ok2
+        issues = issues + issues2
+
     if ok:
         transition(steps, sid, "passed")
         save_steps(task_dir, data)

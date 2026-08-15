@@ -22,6 +22,7 @@
 - **能力插槽** — op 声明 `required_skills`/`required_mcp`，步骤可用 `extra_skills`/`extra_mcp` 补充；执行器把插槽注入 T3 派发，执行 subagent 直接装配 skill/MCP 而非自行发现
 - **本机能力扫描** — `scripts/discover.py` 物化 `artifacts/capabilities.json`（DSH patch 层的 MCP server + skill 目录 + 运行时补充）；`validate.py` 拒绝任何不在清单中的插槽引用——编排者只能装配本机真实拥有的能力
 - **mind 限制** — `mind-orchestrator` 与 `mind-orchestration-audit` 把 LLM 心理学守卫（早期锚定/路径锁定/谄媚/确认偏误）直接编入编排与审计的 T3 rules
+- **mind 具象化（enforce）** — mind 的 `enforce` 四层（fill/schema/forbidden/check）合并进 T3 派发；`executor.py check` 机械验证证据是否来自来源文件原文。对照实验证明：散文 mind 指令只产出路径自指"证据"（`材料/决策/D1`）且丢失原有字段——enforce 把 mind 从散文升级为协议
 - **两层审计** — 静态（多路 subagent 独立审计编排）+ 动态（同一步 3 次同类失败 → `needs_reorchestration`；执行性错误 vs 编排性错误判别）
 - **失败回流** — 失败轨迹回流进模板，引擎对每类任务的编排越用越准
 - **产物物化** — 每步写入任务文件夹；断点续跑、零上下文损耗交接

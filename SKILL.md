@@ -90,6 +90,29 @@ description: 长任务编排引擎。接收任务→物化三件套(steps.json/o
 - 审计者 mind：`mind-orchestration-audit`（C05 确认偏误 / M07 谄媚 / C06 阈值失敏——每维至少找一条可改进点、verdict 默认 revise 倾向、每条意见必须附 evidence 引用）
 - 能力真实性：编排与审计的插槽引用都必须存在于 `artifacts/capabilities.json`（discover.py 产出），validate.py 机械校验
 
+## mind 具象化（enforce 四层，mind 从散文升级为协议）
+
+对照实验证明（2026-08-15，n=1/组）：散文 mind 指令会改变行为（evidence 0/8→8/8）但产出**路径自指引用**（`材料/决策/D1`——subagent 引用自己的输出）；且聚焦新要求会**牺牲原有字段**（owner/deadline 丢失）。因此 mind 必须具象化——minds.json 每个 mind 可带 `enforce` 四层：
+
+```json
+"enforce": {
+  "fill": ["每条结论必须附 evidence 字段，值为来源文件原文片段（非路径引用）"],
+  "schema": {
+    "required": ["evidence", "owner"],
+    "properties": {"evidence": {"type": "array", "items": {"type": "string"}}}
+  },
+  "forbidden": ["禁止用路径式引用（如 材料/决策/D1）充当证据"],
+  "check": {"type": "evidence_in_source", "field": "evidence", "source": "artifacts/material.md"}
+}
+```
+
+- **fill** → 追加进 T3 fill（强制产出要求）
+- **schema** → 合并进 T3 schema（`required` 并集——**必须包含该步骤原有全部必需字段**，否则 subagent 聚焦新要求会丢旧字段）
+- **forbidden** → 追加进 T3 forbidden（禁止应付）
+- **check** → `executor.py check` 机械执行：产物中 field 的每个值必须作为子串出现在 source 文件中（空白折叠）——路径引用/自指引用被拒
+
+实验验证：路径引用 8/8 被拒（exit 1）→ 具象化后 24/24 evidence 为真实原文摘录并全部通过 check。
+
 ## 主 agent 机械命令清单（唯一允许的操作）
 
 ```
