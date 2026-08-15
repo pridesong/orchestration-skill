@@ -36,9 +36,6 @@
 ## 快速开始
 
 ```bash
-# 扫描本机能力（DSH patch 层 MCP server + skill 目录 + 运行时补充）
-python scripts/discover.py tasks/demo-task --runtime-skills web-search,lark-doc --runtime-mcp obsidian
-
 # 机械校验装配表（字段命名/模块引用/routing/无环）
 python scripts/validate.py examples/demo-task
 
@@ -52,11 +49,13 @@ python scripts/executor.py ready examples/demo-task
 python scripts/executor.py t3 examples/demo-task generate_01
 ```
 
+任务目录**在用户项目文件夹下创建**（`<project>/<task_id>/`），绝不在 skill 安装目录下创建。在项目任务目录里运行 `scripts/discover.py` 扫描本机能力。
+
 ## 工作流程
 
 **skill 元状态机（设计收敛）与任务状态机（执行）分离**：
 
-1. **Stage 0 初始化**：建 `tasks/<task_id>/{artifacts,feedback,draft}`；运行 `scripts/discover.py` 物化 `artifacts/capabilities.json`（本机能力清单）；把用户意图浓缩进 `data`（schema 约束）。
+1. **Stage 0 初始化**：在用户项目文件夹建 `<project>/<task_id>/{artifacts,feedback,draft}`；运行 `scripts/discover.py` 物化 `artifacts/capabilities.json`（本机能力清单）；把用户意图浓缩进 `data`（schema 约束）。
 2. **Stage A 编排（设计收敛，草稿态）**：以 `templates/orchestrator.t3.json`（填入 data、引用 modules_ref/capabilities）派发编排者 subagent；编排者按 `mind-orchestrator`（防早期锚定/防路径锁定）产出装配表草稿到 `draft/`——字段序列（`generate_N`/`discriminate_N_xxx`）、模块选择、inputs 连线、判别式 routing。
 3. **Stage B 审计编排（同上下文多轮循环）**：`validate.py draft/`（机械：字段命名/模块引用/routing 合法性/依赖无环），失败 → `send_message` 编排者（延续同一会话）修改；再派独立审计 subagent 经 `templates/audit.t3.json` 按 `mind-orchestration-audit`（防确认偏误/防谄媚）读 `draft/` 产出意见，revise → 意见回流编排者再改。循环直到校验通过 + 审计 pass。多脑子纠错：审计者每次独立上下文。
 4. **Stage C 物化（进入执行态）**：收敛后主 agent 机械复制 `draft/` 到任务根（`executor.py materialize`）——装配表定稿；此后改动回 Stage A。
@@ -71,14 +70,16 @@ python scripts/executor.py t3 examples/demo-task generate_01
 ## 目录
 
 ```
-SKILL.md            # 协议（schema 驱动契约形态）
-schemas/            # JSON Schema（steps 装配表 / modules / minds）
+SKILL.md            # 协议（schema 驱动契约形态，给 LLM 读）
+Description.md      # 人类阅读版（理念/架构/工作流）
+schemas/            # JSON Schema（steps 装配表 / modules / minds / op-table）
 modules/            # 模块库（produce + mind + output_schema + forbidden）
 scripts/            # discover.py / validate.py / executor.py / compare.py（纯标准库）
-templates/          # 装配模板 + 编排者 T3 + 审计 T3
-examples/           # demo-task（正例）、bad-example（负例）、eco-analysis（研究任务）
-tasks/              # 运行时产物（gitignore）
+templates/          # 装配模板 + 编排者 T3 + 审计 T3 + mind 参数集
+examples/           # demo-task（线性）、bad-example（负例）、eco-analysis（研究）、quant-adaptive（并行组）、dsh-client（判别路由）
 ```
+
+任务目录**在本仓库之外**——在用户项目文件夹下创建 `<project>/<task_id>/`，绝不在 skill 安装目录下创建。
 
 ## License
 

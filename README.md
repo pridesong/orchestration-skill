@@ -36,9 +36,6 @@ This skill pushes all of it into **structure**: JSON contracts with JSON-Schema 
 ## Quick start
 
 ```bash
-# scan local capabilities (MCP servers from DSH patch layer + skill dirs + runtime)
-python scripts/discover.py tasks/demo-task --runtime-skills web-search,lark-doc --runtime-mcp obsidian
-
 # validate an assembly table (mechanical gate: field names, module refs, routing, acyclicity)
 python scripts/validate.py examples/demo-task
 
@@ -52,11 +49,13 @@ python scripts/executor.py ready examples/demo-task
 python scripts/executor.py t3 examples/demo-task generate_01
 ```
 
+Task directories are created **in the user's project folder** (`<project>/<task_id>/`), never inside the skill install directory. Use `scripts/discover.py` there to scan local capabilities.
+
 ## How it works
 
 The skill's meta-state-machine (design convergence) is separated from the task's state machine (execution):
 
-1. **Stage 0 — Init**: create `tasks/<task_id>/{artifacts,feedback,draft}`; run `scripts/discover.py` to materialize `artifacts/capabilities.json` (the local capability inventory); condense the user intent into `data` (schema-constrained).
+1. **Stage 0 — Init**: create `<project>/<task_id>/{artifacts,feedback,draft}` in the user's project folder; run `scripts/discover.py` to materialize `artifacts/capabilities.json` (the local capability inventory); condense the user intent into `data` (schema-constrained).
 2. **Stage A — Orchestrate (design convergence, draft state)**: dispatch an orchestrator subagent with `templates/orchestrator.t3.json` (data filled in, modules_ref + capabilities referenced). The orchestrator works under `mind-orchestrator` (anti-anchoring / anti-path-locking) and produces the assembly draft in `draft/`: field sequence (`generate_N` / `discriminate_N_xxx`), module picks, `inputs` wiring, `routing` on discriminators.
 3. **Stage B — Audit orchestration (same-context multi-round loop)**: `validate.py draft/` (mechanical: field-name regex, module refs, routing legality, acyclic deps) — on failure `send_message` the orchestrator (same session) to fix; then an independent audit subagent reads `draft/` via `templates/audit.t3.json` under `mind-orchestration-audit` (anti-confirmation-bias / anti-sycophancy); revise opinions flow back to the orchestrator for another round. Loop until validate passes + audit passes. Separate brains: the auditor stays independent each round.
 4. **Stage C — Materialize (enter execution state)**: on convergence the main agent mechanically copies `draft/` to the task root (`executor.py materialize`) — the assembly is now frozen; later changes return to Stage A.
@@ -71,14 +70,16 @@ The skill's meta-state-machine (design convergence) is separated from the task's
 ## Layout
 
 ```
-SKILL.md            # the protocol (schema-driven contract shape)
-schemas/            # JSON Schemas (steps assembly / modules / minds)
+SKILL.md            # the protocol (schema-driven contract, for the LLM)
+Description.md      # human-readable docs (philosophy, architecture, workflow)
+schemas/            # JSON Schemas (steps assembly / modules / minds / op-table)
 modules/            # the module library (produce + mind + output_schema + forbidden)
 scripts/            # discover.py / validate.py / executor.py / compare.py (pure stdlib)
-templates/          # assembly templates + orchestrator T3 + audit T3
-examples/           # demo-task (happy path), bad-example (negative), eco-analysis (research task)
-tasks/              # runtime artifacts (gitignored)
+templates/          # assembly templates + orchestrator T3 + audit T3 + minds parameter sets
+examples/           # demo-task (linear), bad-example (negative), eco-analysis (research), quant-adaptive (parallel), dsh-client (discriminator routing)
 ```
+
+Task directories live **outside this repo** — create `<project>/<task_id>/` in the user's project folder, never inside the skill install directory.
 
 ## License
 
