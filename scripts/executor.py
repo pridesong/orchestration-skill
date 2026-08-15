@@ -294,7 +294,15 @@ def cmd_t3(task_dir, sid):
         rules.append(f"验收标准（必须全部满足）：{ac}")
     if mind:
         mp = mind.get("params") or {}
-        if mp.get("instruction"):
+        mtype = mind.get("type", "directive")
+        if mtype == "constraint":
+            # 负向约束（FORBIDDEN 类，日常主力）：只封死错路，不教 LLM 怎么做——
+            # 默认 LLM 具备产出能力，用 forbidden 防止它在幻觉区滑行
+            mforbidden = mind.get("forbidden") or []
+            rules.append(f"思维约束（{mind.get('name', mp.get('mode', 'mind'))}）：以下为硬约束，违反即不合格")
+            for fb in mforbidden:
+                rules.append(f"  禁止：{fb}")
+        elif mp.get("instruction"):
             rules.append(f"思维模式（{mind.get('name', mp.get('mode', 'mind'))}）：{mp['instruction']}")
         elif mp.get("mode") == "audit":
             rules.append(f"思维模式（audit）：只可用可验证事实为据；每条结论必须附证据引用（指向输入数据中真实存在的条目）；无法溯源的信息不得写入产物。")
@@ -309,6 +317,9 @@ def cmd_t3(task_dir, sid):
     enforce_schema = (enforce or {}).get("schema") or {}
     enforce_forbidden = (enforce or {}).get("forbidden") or []
     enforce_check = (enforce or {}).get("check")
+
+    # constraint 型 mind 的 forbidden 也并入 T3 forbidden（负向约束走协议层，双保险）
+    constraint_forbidden = (mind.get("forbidden") or []) if (mind and mind.get("type") == "constraint") else []
 
     # 能力插槽：op.required_skills/required_mcp + step.extra_skills/extra_mcp（合并去重）→ 注入 rules
     skills = list(dict.fromkeys([*(op.get("required_skills") or []), *(step.get("extra_skills") or [])]))
@@ -349,7 +360,7 @@ def cmd_t3(task_dir, sid):
             "产物必须满足全部验收标准（rules 中逐条列出），机械可检查",
             "不得引用输入数据中不存在的事实",
             "JSON 产物必须是合法 JSON，字段严格符合 schema（禁止多余顶层字段）",
-        ] + enforce_forbidden,
+        ] + enforce_forbidden + constraint_forbidden,
         "check": enforce_check,
     }
     ddir = os.path.join(task_dir, "dispatch")

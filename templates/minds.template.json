@@ -3,12 +3,20 @@
     {
       "id": "mind-default",
       "name": "默认执行思维",
+      "type": "constraint",
       "params": { "mode": "execute" },
+      "forbidden": [
+        "不得编造输入中不存在的事实、数字、来源",
+        "不得输出模糊的概括——每句结论必须可溯源到输入或推理链",
+        "不得只做部分工作——覆盖任务要求的全部产出字段",
+        "不得用散文替代结构化产出——严格按 schema 输出"
+      ],
       "apply_to": []
     },
     {
       "id": "mind-audit",
       "name": "工具审计思维",
+      "type": "constraint",
       "params": {
         "mode": "audit",
         "gate": "I2",
@@ -35,11 +43,61 @@
           "source": "artifacts/material.md"
         }
       },
+      "forbidden": [
+        "不得放行未附证据的结论",
+        "不得接受路径式/自指引用充当证据"
+      ],
+      "apply_to": []
+    },
+    {
+      "id": "mind-focus",
+      "name": "聚焦执行思维",
+      "type": "constraint",
+      "params": { "mode": "execute", "principle": "只做当前步骤声明的事，不扩散到相邻任务" },
+      "forbidden": [
+        "不得做当前步骤 scope 之外的事",
+        "不得提前产出依赖后续步骤的结论",
+        "不得修改不属于本步骤产出的文件"
+      ],
+      "apply_to": []
+    },
+    {
+      "id": "mind-trap-detect",
+      "name": "认知陷阱检测",
+      "type": "constraint",
+      "params": {
+        "mode": "audit",
+        "source": "methodology-tools/tools/llm-trap-detect.js",
+        "principle": "扫描见词拆词、虚假类比、过度拟合、未经审查术语"
+      },
+      "forbidden": [
+        "不得外交辞令——直接指出问题",
+        "不得说 '可能有陷阱' 而不给证据——必须具体定位",
+        "不得跳过明显问题",
+        "不得把'听起来像所以应该是'当作推理——类比必须结构同构验证"
+      ],
+      "apply_to": []
+    },
+    {
+      "id": "mind-decompose",
+      "name": "系统分解思维",
+      "type": "constraint",
+      "params": {
+        "mode": "execute",
+        "source": "methodology-tools/tools/systemic-decomposition.js",
+        "principle": "zoom-out 找边界 / zoom-in 原子拆，找错误的边界而非实现"
+      },
+      "forbidden": [
+        "不得拆到指令级——把局部整体当原子块",
+        "不得只命名实现 bug——要找 API 契约/边界的根因",
+        "不得跳过边界接口分析"
+      ],
       "apply_to": []
     },
     {
       "id": "mind-orchestrator",
       "name": "编排者思维",
+      "type": "directive",
       "params": {
         "mode": "orchestrate",
         "cognitive_targets": ["C05 早期锚定", "C03 路径锁定", "C02 执行启动缺失"],
@@ -51,11 +109,34 @@
     {
       "id": "mind-orchestration-audit",
       "name": "编排审计思维",
+      "type": "directive",
       "params": {
         "mode": "audit",
         "cognitive_targets": ["C05 确认偏误", "M07 谄媚", "C06 阈值失敏"],
         "instruction": "审计编排者三件套时对抗三个默认路径：① 确认偏误（只找支持编排的证据）→ 强制每维至少找一条可改进点，找不到也要写 evidence 说明为何该维无懈可击；② 谄媚（倾向放行让编排通过）→ verdict 默认 revise 倾向，pass 必须逐维论证可执行；③ 阈值失敏（把 looks reasonable 当合格）→ 每条意见必须引用三件套真实条目（步骤 id/op id/mind id/字段值）作为 evidence。",
         "verification": "审计完成后自检：每条 issue 是否有 evidence 引用？pass 是否逐维论证？插槽引用的能力是否都在 capabilities.json 中？"
+      },
+      "apply_to": []
+    },
+    {
+      "id": "mind-crusher",
+      "name": "翻墙思维（CRUSH）",
+      "type": "directive",
+      "params": {
+        "mode": "generate",
+        "source": "theorytrack/lib/organs.js",
+        "instruction": "CRUSH_STEP_1: 找出隐藏的默认假设——显式写下来。\nCRUSH_STEP_2: 翻转它。如果反命题成立，会涌现什么新结构？\nCRUSH_STEP_3: 如果反命题涌现了新结构 → 当作假设，不许标为错误。\nCRUSH_STEP_4: 如果没涌现 → 假设通过，但记录为什么。"
+      },
+      "apply_to": []
+    },
+    {
+      "id": "mind-anti-goal",
+      "name": "反目标思维",
+      "type": "directive",
+      "params": {
+        "mode": "generate",
+        "source": "methodology-tools/tools/anti-goal.js",
+        "instruction": "构造完全相反的命题。如果目标是'突破 X'，反目标就是'让 X 永远存在且不可绕过'。分析反目标成立的条件：什么物理/数学/工程约束会使它自然成立？哪些条件被当前方案默认接受？反目标揭示的盲区 = 正目标的最脆弱假设。"
       },
       "apply_to": []
     }

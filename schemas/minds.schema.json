@@ -15,6 +15,15 @@
         "properties": {
           "id": { "type": "string", "pattern": "^mind-" },
           "name": { "type": "string", "minLength": 1 },
+          "type": {
+            "enum": ["directive", "constraint"],
+            "description": "mind 注入类型（默认 directive）：directive=正向注入（crusher 类，给一条思考路径，科研步骤用）；constraint=负向约束（FORBIDDEN 类，封死错路防幻觉区滑行，日常任务主力）"
+          },
+          "forbidden": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "constraint 型 mind 的硬约束清单（注入 T3 forbidden）；directive 型忽略"
+          },
           "params": {
             "type": "object",
             "description": "思维参数：自由结构 + enforce 具象化四层（fill/schema/forbidden/check）。enforce 由 executor.py t3 合并进派发，check 由 executor.py check 机械执行——mind 从散文升级为协议。"

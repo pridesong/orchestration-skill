@@ -90,6 +90,34 @@ description: 长任务编排引擎。接收任务→物化三件套(steps.json/o
 - 审计者 mind：`mind-orchestration-audit`（C05 确认偏误 / M07 谄媚 / C06 阈值失敏——每维至少找一条可改进点、verdict 默认 revise 倾向、每条意见必须附 evidence 引用）
 - 能力真实性：编排与审计的插槽引用都必须存在于 `artifacts/capabilities.json`（discover.py 产出），validate.py 机械校验
 
+## mind 注入双轨制（directive 正向 vs constraint 负向）
+
+方法论工具库（Obsidian：AI Factory/方法论工具库.md、思维参数手册、LLM认知心理学）证实：**mind 注入分两大类**——
+
+- **directive（正向注入，crusher 类）**：给 LLM 一条思考路径（CRUSH_STEP_1-4、反目标构造、TRIZ 矩阵…），科研步骤用。`params.instruction` 注入 rules。
+- **constraint（负向约束，FORBIDDEN 类）**：日常任务主力。默认 LLM 具备产出能力，问题不是"不会做"而是"在幻觉区滑行"——用 FORBIDDEN 封死错路，让正确的路成为唯一选项。`forbidden` 数组注入 T3 forbidden（协议层）+ rules 声明"硬约束，违反即不合格"。
+
+依据（LLM认知心理学）："结构 > 内容。FORBIDDEN 比'请用 X 方法'有效一百倍——不是提供新路，是物理封死老路。" 五类退化（摘果/摔门/融合/检索/散文）各自对应阻断手段。
+
+**日常 FORBIDDEN 库**（constraint 型 mind 的 forbidden 清单，从五类退化阻断提炼）：
+- 禁编造（幻觉）——不得输出输入中不存在的事实/数字/来源
+- 禁模糊（散文退化）——不得输出不可溯源的概括
+- 禁摘果——不得只挑最容易验证的条目
+- 禁只做部分——覆盖全部产出字段
+
+**模板内置 mind 分类**：
+| mind | type | 来源 | 用途 |
+|---|---|---|---|
+| mind-default | constraint | 五类退化阻断 | 日常执行默认约束 |
+| mind-focus | constraint | 步骤边界 | 防止 scope 扩散 |
+| mind-trap-detect | constraint | llm-trap-detect.js | 认知陷阱检测（见词拆词/虚假类比/过度拟合） |
+| mind-decompose | constraint | systemic-decomposition.js | 系统分解（找边界非实现） |
+| mind-audit | constraint+enforce | I2 门 | 证据强制审计 |
+| mind-orchestrator | directive | C05/C03/C02 | 编排者心智 |
+| mind-orchestration-audit | directive | C05/M07/C06 | 编排审计心智 |
+| mind-crusher | directive | organs.js CRUSH_STEPS | 翻墙（科研） |
+| mind-anti-goal | directive | anti-goal.js | 反目标（科研） |
+
 ## mind 具象化（enforce 四层，mind 从散文升级为协议）
 
 对照实验证明（2026-08-15，n=1/组）：散文 mind 指令会改变行为（evidence 0/8→8/8）但产出**路径自指引用**（`材料/决策/D1`——subagent 引用自己的输出）；且聚焦新要求会**牺牲原有字段**（owner/deadline 丢失）。因此 mind 必须具象化——minds.json 每个 mind 可带 `enforce` 四层：
