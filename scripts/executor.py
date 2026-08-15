@@ -104,10 +104,11 @@ def get_field(fields, fid):
     return None
 
 
-# ---------- state.csv（字段驱动列，追加行快照，最后一行=当前状态） ----------
+# ---------- state.csv（字段驱动列，显式快照，最后一行=当前状态） ----------
 #
 # 列 = 装配表全部字段（generate_N / discriminate_N_xxx）+ _ts + _note。
-# 每行是一次状态快照：只填本次变更的字段列（稀疏），最后一行 = 当前全状态。
+# 每行是**完整显式快照**：所有字段列都显式写值（变更列写新值，其他列写当前状态，
+# 未执行写 pending）——无稀疏继承。op-table 排它匹配依赖每行显式值。
 # generate 列存状态（passed/failed/pending）；discriminate 列存判断值（verdict 即状态）。
 
 def state_columns(fields):
@@ -132,7 +133,11 @@ def load_state(task_dir):
 
 
 def append_state(task_dir, fields, fid, value, note=""):
-    """追加一行状态快照：只填 fid 列（值为状态或判断值），其余列继承上行动（稀疏保持）。
+    """追加一行状态快照：**全列显式填充**（无稀疏继承）。
+
+    每行 = 当前完整状态：变更字段写新值，其他字段显式写当前已知值，
+    未执行字段显式写 pending。op-table 排它匹配依赖每行的显式值——
+    空值/继承会产生歧义，破坏条件互斥。
 
     generate: value ∈ {passed, failed, pending, needs_reorchestration}
     discriminate: value = 判断值（如 revise）——判别后此列即当前值
@@ -141,16 +146,13 @@ def append_state(task_dir, fields, fid, value, note=""):
     import datetime
     ts = datetime.datetime.now().isoformat(timespec="seconds")
     cols = state_columns(fields)
-    prev = {}
-    if os.path.exists(path):
-        try:
-            with open(path, "r", encoding="utf-8-sig") as f:
-                rows = list(csv.DictReader(f))
-            if rows:
-                prev = rows[-1]
-        except (csv.Error, OSError):
-            prev = {}
-    row = {k: prev.get(k, "") for k in cols}
+    # 当前已知状态（上一行全量快照）→ 未执行字段显式 pending
+    prev = load_state(task_dir)
+    row = {}
+    for f in fields:
+        fid_c = f["field"]
+        v = prev.get(fid_c)
+        row[fid_c] = v if v else "pending"
     row[fid] = value
     row["_ts"] = ts
     row["_note"] = note
@@ -419,7 +421,7 @@ def cmd_ready(task_dir):
     blocked = []
     for f in fields:
         fid = f["field"]
-        if (state.get(fid) or "") not in (None, "", "failed", "needs_reorchestration"):
+        if (state.get(fid) or "pending") not in ("pending", "failed", "needs_reorchestration"):
             continue
         ok, why = prerequisites_met(fields, state, f)
         if ok:
@@ -585,7 +587,7 @@ def cmd_check(task_dir, fid):
         sys.exit(f"字段不存在: {fid}")
     state = load_state(task_dir)
     cur = state.get(fid) or None
-    if cur not in (None, "failed", "needs_reorchestration"):
+    if cur not in (None, "pending", "failed", "needs_reorchestration"):
         sys.exit(f"字段 {fid} 当前状态 {cur}，不能 check")
 
     ok, why = prerequisites_met(fields, state, field)
