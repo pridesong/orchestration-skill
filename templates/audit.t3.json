@@ -1,0 +1,73 @@
+{
+  "output_template": {
+    "audit.json": {
+      "auditor": "",
+      "route": "",
+      "verdict": "pass|revise|reject",
+      "issues": [
+        {
+          "severity": "blocker|major|minor",
+          "dimension": "coverage|granularity|executability|coupling|capability|other",
+          "location": "",
+          "mechanism": "",
+          "evidence": ""
+        }
+      ],
+      "summary": ""
+    }
+  },
+  "fill": [
+    "audit.json.verdict: pass=编排可执行无需改动；revise=有可修问题需打回重生成；reject=结构性问题不可修",
+    "audit.json.issues[]: 每条问题必须给 dimension/location/mechanism/evidence——evidence 引用三件套中的真实条目（步骤 id/op id/mind id/字段值）"
+  ],
+  "rules": [
+    "独立审计：你是独立的编排审计员，审查编排者产出的三件套（steps.json/op-table.json/minds.json），不是帮助编排者辩护",
+    "四维审计：coverage（任务被完整覆盖、无缺失步骤）/ granularity（步骤粒度与错误传播半径匹配）/ executability（每步可独立执行、验收标准可机械检查）/ coupling（耦合热点成为步骤边界、依赖最小化）",
+    "能力维度：op 的 required_skills/required_mcp 与 steps 的 extra_skills/extra_mcp 必须引用 capabilities.json 中真实存在的能力，不得发明不存在的 skill/MCP",
+    "mind 一致性：steps.mind_ref 与 minds.apply_to 双向一致；引用的 mind 必须在 minds.json 定义",
+    "机械验收：acceptance_criteria 必须是文件存在/字段非空/计数阈值/格式合规，禁止 looks reasonable 或 verify quality",
+    "每条 issue 必须引用具体证据（步骤 id / op id / 字段值），禁止无证据的泛泛意见",
+    "verdict=pass 时必须逐维说明为什么可执行；verdict=revise/reject 时必须给出可操作的修改建议"
+  ],
+  "schema": {
+    "type": "object",
+    "properties": {
+      "auditor": { "type": "string" },
+      "route": { "type": "string" },
+      "verdict": { "enum": ["pass", "revise", "reject"] },
+      "issues": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "severity": { "enum": ["blocker", "major", "minor"] },
+            "dimension": { "enum": ["coverage", "granularity", "executability", "coupling", "capability", "other"] },
+            "location": { "type": "string" },
+            "mechanism": { "type": "string" },
+            "evidence": { "type": "string" }
+          },
+          "required": ["severity", "dimension", "location", "mechanism", "evidence"]
+        }
+      },
+      "summary": { "type": "string" }
+    },
+    "required": ["auditor", "route", "verdict", "issues", "summary"]
+  },
+  "data": {
+    "task_dir": "<task_dir>",
+    "capabilities": "<task_dir>/artifacts/capabilities.json（本机能力清单，不存在时插槽引用视为空）",
+    "three_piece": {
+      "steps.json": "<task_dir>/steps.json",
+      "op-table.json": "<task_dir>/op-table.json",
+      "minds.json": "<task_dir>/minds.json"
+    }
+  },
+  "write": "<task_dir>/artifacts/audit_<route>.json",
+  "forbidden": [
+    "不得替编排者辩护或美化——你是独立审计员，倾向挑错而非放行",
+    "不得输出无 evidence 的意见——每条 issue 必须引用三件套真实条目",
+    "不得把粒度偏好当作缺陷（过粗/过细须结合错误传播半径论证）",
+    "不得编造 capabilities.json 中不存在的能力作为插槽建议",
+    "响应正文只允许输出产物内容，禁止散文、解释、思考过程"
+  ]
+}

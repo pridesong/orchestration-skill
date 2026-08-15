@@ -15,6 +15,28 @@
         "principle": "看起来完美的数字先过工具审计（数学恒等式/定义恒等/泰勒恒等），再当证据"
       },
       "apply_to": []
+    },
+    {
+      "id": "mind-orchestrator",
+      "name": "编排者思维",
+      "params": {
+        "mode": "orchestrate",
+        "cognitive_targets": ["C05 早期锚定", "C03 路径锁定", "C02 执行启动缺失"],
+        "instruction": "编排任务分解时对抗三个默认路径：① 早期锚定（看到任务第一反应直接成步骤序列）→ 先列出任务的独立子目标再定步骤，禁止跳过目标分解直接写 steps；② 路径锁定（总按熟悉的模板结构排布）→ 每个步骤的 op_ref/mind_ref 必须由该步骤要回答的问题驱动，不是由模板熟悉度驱动；③ 执行启动缺失（检索拼接常见步骤而非构造）→ 步骤必须可机械验证，禁止 looks reasonable 式验收标准。",
+        "verification": "编排完成后自检：每个步骤的 acceptance_criteria 是否机械可查？是否还有可并行却串行的步骤？是否引用了 capabilities.json 中不存在的能力？"
+      },
+      "apply_to": []
+    },
+    {
+      "id": "mind-orchestration-audit",
+      "name": "编排审计思维",
+      "params": {
+        "mode": "audit",
+        "cognitive_targets": ["C05 确认偏误", "M07 谄媚", "C06 阈值失敏"],
+        "instruction": "审计编排者三件套时对抗三个默认路径：① 确认偏误（只找支持编排的证据）→ 强制每维至少找一条可改进点，找不到也要写 evidence 说明为何该维无懈可击；② 谄媚（倾向放行让编排通过）→ verdict 默认 revise 倾向，pass 必须逐维论证可执行；③ 阈值失敏（把 looks reasonable 当合格）→ 每条意见必须引用三件套真实条目（步骤 id/op id/mind id/字段值）作为 evidence。",
+        "verification": "审计完成后自检：每条 issue 是否有 evidence 引用？pass 是否逐维论证？插槽引用的能力是否都在 capabilities.json 中？"
+      },
+      "apply_to": []
     }
   ]
 }

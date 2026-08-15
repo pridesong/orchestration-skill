@@ -123,6 +123,47 @@ def check_mind_backrefs(steps, minds, errors):
             )
 
 
+def check_capability_slots(task_dir, data, errors):
+    """插槽引用的能力必须存在于 capabilities.json（若存在该文件）。
+
+    不强制 capabilities.json 存在（旧任务没有能力扫描也可通过）；但一旦存在，
+    插槽引用就是硬约束：required_skills/required_mcp/extra_skills/extra_mcp
+    必须命中文档中的 skills/mcp_servers。
+    """
+    cap_path = os.path.join(task_dir, "artifacts", "capabilities.json")
+    if not os.path.exists(cap_path):
+        return
+    try:
+        with open(cap_path, "r", encoding="utf-8-sig") as f:
+            caps = json.load(f)
+    except (json.JSONDecodeError, OSError) as e:
+        errors.append(f"capabilities.json 读取失败: {e}")
+        return
+    known_skills = set(caps.get("skills") or [])
+    known_mcp = set(caps.get("mcp_servers") or [])
+
+    slots = []
+    for op in data.get("op-table.json", {}).get("operations", []):
+        opid = op.get("id", "?")
+        for s in op.get("required_skills") or []:
+            slots.append(("op-table.json", f"op {opid} required_skills", s, known_skills))
+        for s in op.get("required_mcp") or []:
+            slots.append(("op-table.json", f"op {opid} required_mcp", s, known_mcp))
+    for st in data.get("steps.json", {}).get("steps", []):
+        sid = st.get("id", "?")
+        for s in st.get("extra_skills") or []:
+            slots.append(("steps.json", f"step {sid} extra_skills", s, known_skills))
+        for s in st.get("extra_mcp") or []:
+            slots.append(("steps.json", f"step {sid} extra_mcp", s, known_mcp))
+
+    for fname, where, cap, known in slots:
+        if cap not in known:
+            errors.append(
+                f"{fname}: {where} 引用能力 '{cap}' 不在 capabilities.json "
+                f"(skills={sorted(known_skills) or '空'}, mcp_servers={sorted(known_mcp) or '空'})"
+            )
+
+
 def main():
     if len(sys.argv) < 2:
         print("用法: python validate.py <task_dir>")
@@ -166,6 +207,8 @@ def main():
         minds = data["minds.json"].get("minds", [])
         if "steps.json" in data:
             check_mind_coverage(data["steps.json"].get("steps", []), minds, errors)
+
+    check_capability_slots(task_dir, data, errors)
 
     if errors:
         print("校验失败:")

@@ -60,7 +60,10 @@
     "reuse ops: do not create new operations when existing ones suffice; keep op vocabulary convergent",
     "failure containment: a step's failure must affect only that step, not propagate downstream",
     "mind matching: exploration/audit steps use mind-audit; mechanical execution steps use mind-default; reuse existing mind-params instead of inventing new ones",
-    "capability slots: when an op needs an external skill or MCP tool, declare it on the op (required_skills / required_mcp, non-empty-string arrays; empty = none); a step may add step-level extras (extra_skills / extra_mcp) on top of its op; these slots are injected into the T3 dispatch so the executor assembles them directly instead of discovering them"
+    "capability slots: when an op needs an external skill or MCP tool, declare it on the op (required_skills / required_mcp, non-empty-string arrays; empty = none); a step may add step-level extras (extra_skills / extra_mcp) on top of its op; these slots are injected into the T3 dispatch so the executor assembles them directly instead of discovering them",
+    "capability provenance: required_skills / required_mcp / extra_skills / extra_mcp MUST name capabilities that exist in capabilities.json (read data.capabilities); never invent a skill or MCP server that is not in the local capability inventory",
+    "anti-anchoring: do not copy a template_ref structure verbatim — if data.template_ref is present, treat it as a skeleton to adapt to data.task, not a fixed sequence; the step sequence must be derived from the task, not from template familiarity",
+    "anti-hedging: every step must have a definite op_ref, mind_ref, and output.file — no placeholder steps, no 'TBD' descriptions, no steps that exist only to look thorough"
   ],
   "schema": {
     "steps": "schemas/steps.schema.json",
@@ -72,7 +75,8 @@
     "constraints": ["<implicit constraints from user intent>"],
     "deliverable": "<final deliverable definition>",
     "template_ref": "<optional: existing three-piece skeleton from templates/ or examples/>",
-    "intel_ref": "<optional: step1 intelligence artifact path, e.g. artifacts/step1_intel.json>"
+    "intel_ref": "<optional: step1 intelligence artifact path, e.g. artifacts/step1_intel.json>",
+    "capabilities": "<task_dir>/artifacts/capabilities.json — local capability inventory (skills + mcp_servers) produced by scripts/discover.py; capability slots MUST draw from this list"
   },
   "write": {
     "steps.json": "<task_dir>/steps.json",
@@ -85,6 +89,8 @@
     "do not create dependency cycles",
     "do not set status to anything other than pending",
     "do not write prose explanations outside the JSON artifacts",
-    "do not skip output.file: every step must materialize an artifact"
+    "do not skip output.file: every step must materialize an artifact",
+    "do not declare a required_skill / required_mcp / extra_skill / extra_mcp that is absent from capabilities.json",
+    "do not reproduce a template_ref step-for-step when data.task differs from the template's task — derive the sequence from the task"
   ]
 }

@@ -204,7 +204,9 @@ def cmd_t3(task_dir, sid):
         rules.append(f"验收标准（必须全部满足）：{ac}")
     if mind:
         mp = mind.get("params") or {}
-        if mp.get("mode") == "audit":
+        if mp.get("instruction"):
+            rules.append(f"思维模式（{mind.get('name', mp.get('mode', 'mind'))}）：{mp['instruction']}")
+        elif mp.get("mode") == "audit":
             rules.append(f"思维模式（audit）：只可用可验证事实为据；每条结论必须附证据引用（指向输入数据中真实存在的条目）；无法溯源的信息不得写入产物。")
         elif mp.get("principle"):
             rules.append(f"思维模式：{mp['principle']}")
