@@ -186,9 +186,11 @@ def field_inputs(field):
 
 
 def routing_targets(field):
-    """判别式字段的路由目标（routing 值的字段部分）。"""
+    """判别式字段的路由目标（routing 值的字段部分；对象形态取 to）。"""
     targets = set()
     for v in (field.get("routing") or {}).values():
+        if isinstance(v, dict):
+            v = v.get("to", "stop")
         if v == "stop":
             continue
         targets.add(v)

@@ -70,6 +70,8 @@ def check_field_refs(fields, module_ids, errors):
                 errors.append(f"steps.json: 判别字段 {fid} 缺少 routing（须定义判断值→目标映射）")
             else:
                 for val, target in routing.items():
+                    if isinstance(target, dict):
+                        target = target.get("to", "stop")
                     if target != "stop" and target not in field_ids:
                         errors.append(f"steps.json: 字段 {fid} 的 routing[{val}] 目标不存在: {target}")
 
@@ -89,6 +91,8 @@ def check_acyclic(fields, errors):
                     adj[v].add(fid)
                     indeg[fid] += 1
         for v in (f.get("routing") or {}).values():
+            if isinstance(v, dict):
+                v = v.get("to", "stop")
             if v != "stop" and v in field_ids and v != fid:
                 if fid not in adj[v]:
                     adj[v].add(fid)
