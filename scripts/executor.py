@@ -107,9 +107,9 @@ def get_field(fields, fid):
 # ---------- state.csv（字段驱动列，显式快照，最后一行=当前状态） ----------
 #
 # 列 = 装配表全部字段（generate_N / discriminate_N_xxx）+ _ts + _note。
-# 每行是**完整显式快照**：所有字段列都显式写值（变更列写新值，其他列写当前状态，
-# 未执行写 pending）——无稀疏继承。op-table 排它匹配依赖每行显式值。
-# generate 列存状态（passed/failed/pending）；discriminate 列存判断值（verdict 即状态）。
+# **每行 = 一步**：只填当前步产出的字段（generate 填状态 / discriminate 填判断值），
+# 其他列留空——无继承。最后一行 = 当前步，op-table 只读最后一行判定下一步。
+# 字段完成性 = 产物文件存在（artifacts/<field>.json），不依赖 state 行历史。
 
 def state_columns(fields):
     """列 = 装配表全字段名 + _ts + _note。"""
@@ -117,7 +117,7 @@ def state_columns(fields):
 
 
 def load_state(task_dir):
-    """读 state.csv 最后一行 → {field: 值}（当前全状态）。无文件返回 {}。"""
+    """读 state.csv 最后一行 → {field: 值}（当前步产出，非空字段）。无文件/空 → {}。"""
     path = os.path.join(task_dir, STATE_FILE)
     if not os.path.exists(path):
         return {}
@@ -129,30 +129,20 @@ def load_state(task_dir):
     if not rows:
         return {}
     last = rows[-1]
-    return {k: (v or "") for k, v in last.items() if not k.startswith("_")}
+    return {k: v for k, v in last.items() if not k.startswith("_") and v}
 
 
 def append_state(task_dir, fields, fid, value, note=""):
-    """追加一行状态快照：**全列显式填充**（无稀疏继承）。
+    """追加一行：**只填当前步的 fid 列**，其他列全空（无继承）。
 
-    每行 = 当前完整状态：变更字段写新值，其他字段显式写当前已知值，
-    未执行字段显式写 pending。op-table 排它匹配依赖每行的显式值——
-    空值/继承会产生歧义，破坏条件互斥。
-
-    generate: value ∈ {passed, failed, pending, needs_reorchestration}
-    discriminate: value = 判断值（如 revise）——判别后此列即当前值
+    每行 = 一步的产出记录；op-table 只读最后一行。generate 行填状态，
+    discriminate 行填判断值（verdict 即状态）。
     """
     path = os.path.join(task_dir, STATE_FILE)
     import datetime
     ts = datetime.datetime.now().isoformat(timespec="seconds")
     cols = state_columns(fields)
-    # 当前已知状态（上一行全量快照）→ 未执行字段显式 pending
-    prev = load_state(task_dir)
-    row = {}
-    for f in fields:
-        fid_c = f["field"]
-        v = prev.get(fid_c)
-        row[fid_c] = v if v else "pending"
+    row = {c: "" for c in cols}
     row[fid] = value
     row["_ts"] = ts
     row["_note"] = note
@@ -205,19 +195,22 @@ def routing_targets(field):
     return targets
 
 
-def prerequisites_met(fields, state, field):
+def prerequisites_met(task_dir, fields, field):
+    """前置门禁：依赖字段的产物文件必须已物化（artifacts/<dep>.json 存在）。
+
+    字段完成性 = 产物文件存在，不依赖 state.csv 行历史（cataclysm 物化语义）。
+    判别式依赖 = 其输入字段产物存在。
+    """
     deps = field_inputs(field)
     for dep in deps:
-        st = state.get(dep)
-        if st is None:
-            return False, f"依赖字段 {dep} 无状态记录（未执行）"
-        if st != "passed":
-            return False, f"依赖字段 {dep} 状态为 {st}（须 passed）"
+        dep_file = os.path.join(task_dir, f"artifacts/{dep}.json")
+        if not os.path.exists(dep_file):
+            return False, f"依赖字段 {dep} 产物未物化: artifacts/{dep}.json"
     return True, ""
 
 
 def next_runnable_generate(fields, state, fid):
-    """generate_N 的线性推进：同属 generate 序列的后续字段（跳过已 passed）。"""
+    """generate_N 的线性推进：同属 generate 序列的后续字段（产物未物化）。"""
     m = GEN_FIELD.match(fid)
     if not m:
         return None
@@ -403,27 +396,28 @@ def cmd_status(task_dir):
     print(f"任务 {data.get('task_id', '?')} v{data.get('version', '?')}")
     for f in fields:
         fid = f["field"]
-        st = state.get(fid) or "pending"
+        produce = field_produce(fid)
         deps = field_inputs(f)
         dep_s = f"  <- {','.join(sorted(deps))}" if deps else ""
-        produce = field_produce(fid)
-        if produce == "discriminate" and st not in ("", "pending"):
-            print(f"  {fid:<28} [{produce}]  [判断={st}] {f.get('name', '')}{dep_s}")
+        # 完成性 = 产物文件存在；判别式额外显示最后判定值
+        done = os.path.exists(os.path.join(task_dir, f"artifacts/{fid}.json"))
+        if produce == "discriminate" and state.get(fid):
+            st = f"[判断={state[fid]}]"
         else:
-            print(f"  {fid:<28} [{produce}]  {st:<12} {f.get('name', '')}{dep_s}")
+            st = "done" if done else "pending"
+        print(f"  {fid:<28} [{produce}]  {st:<12} {f.get('name', '')}{dep_s}")
 
 
 def cmd_ready(task_dir):
     data = load_steps(task_dir)
     fields = data["fields"]
-    state = load_state(task_dir)
     ready = []
     blocked = []
     for f in fields:
         fid = f["field"]
-        if (state.get(fid) or "pending") not in ("pending", "failed", "needs_reorchestration"):
-            continue
-        ok, why = prerequisites_met(fields, state, f)
+        if os.path.exists(os.path.join(task_dir, f"artifacts/{fid}.json")):
+            continue  # 已物化 = 已完成
+        ok, why = prerequisites_met(task_dir, fields, f)
         if ok:
             ready.append(f)
         else:
@@ -575,24 +569,29 @@ def cmd_t3(task_dir, fid):
 
 
 def cmd_check(task_dir, fid):
-    """前置门禁 → 产物检查 → state.csv 快照追加（passed/failed/判断值）。
+    """前置门禁（依赖产物已物化）→ 产物检查 → state.csv 追加一步行。
 
-    状态真相源 = state.csv（列=全字段，行=快照，最后一行=当前状态）。
-    判别式：判断值 ∈ routing keys → 路由（回修目标列写 pending，stop 终止）。
+    物化语义：字段完成性 = artifacts/<field>.json 存在。
+    - generate：产物 JSON 验证通过 → 追加状态行（passed），完成
+    - discriminate：产物判断值 ∈ routing keys → 追加判断行，路由生效
+    - 回修：路由目标产物存在 → 删除产物文件（物化语义：没了=未完成），下游依赖者同样失效
+    state.csv 每行 = 一步，只填当步字段，不继承；op-table 只读最后一行。
     """
     data = load_steps(task_dir)
     fields = data["fields"]
     field = get_field(fields, fid)
     if field is None:
         sys.exit(f"字段不存在: {fid}")
-    state = load_state(task_dir)
-    cur = state.get(fid) or None
-    if cur not in (None, "pending", "failed", "needs_reorchestration"):
-        sys.exit(f"字段 {fid} 当前状态 {cur}，不能 check")
 
-    ok, why = prerequisites_met(fields, state, field)
+    # 前置门禁：依赖产物已物化
+    ok, why = prerequisites_met(task_dir, fields, field)
     if not ok:
         sys.exit(f"前置门禁拦截: {fid} — {why}")
+
+    # 本字段必须已有产物（subagent 已执行），否则 check 无对象
+    art_file = os.path.join(task_dir, f"artifacts/{fid}.json")
+    if not os.path.exists(art_file):
+        sys.exit(f"产物缺失: {art_file}（先执行本字段再 check）")
 
     modules = load_modules(task_dir)
     module = modules.get(field["module"], {})
@@ -607,83 +606,91 @@ def cmd_check(task_dir, fid):
 
     produce = field_produce(fid)
     if not ok:
-        # 失败计数：从 _note 或重新计数（简化：读 state 该列历史）
-        new_status = "failed"
-        append_state(task_dir, fields, fid, new_status, note=f"FAIL {issues[0][:40]}")
-        print(f"{fid} FAILED ✗（达 {MAX_FAILURES} 次将触发重新编排）")
+        append_state(task_dir, fields, fid, "failed", note=f"FAIL {'; '.join(issues)[:60]}")
+        print(f"{fid} FAILED ✗")
         for i in issues:
             print(f"  ✗ {i}")
         return 1
 
-    # 判别式：读判断值 → 状态列写判断值（verdict 即状态），再路由
-    if produce == "discriminate":
-        routing = field.get("routing") or module.get("routing") or {}
-        try:
-            with open(os.path.join(task_dir, f"artifacts/{fid}.json"), "r", encoding="utf-8-sig") as f:
-                content = json.load(f)
-        except Exception:
-            content = {}
-        verdict = None
-        for item in (module.get("output_schema") or {}).get("required", []):
-            if item in content and isinstance(content[item], str):
-                verdict = content[item]
-                break
-        if verdict is None:
-            print(f"  ⚠ 判别式 {fid} 未找到判断项值（routing 无法生效）")
-            append_state(task_dir, fields, fid, "passed", note=f"判断项缺失")
-            return 0
-        if verdict not in routing:
-            print(f"  ✗ 判别式 {fid} 判断值 {verdict} 不在路由合法域 {sorted(routing.keys())}")
-            append_state(task_dir, fields, fid, "failed", note=f"路由非法 {verdict}")
-            return 1
-        append_state(task_dir, fields, fid, verdict, note=f"判别 {verdict}")
-        target = routing.get(verdict)
-        if target == "stop":
-            print(f"  → 路由: {verdict} → stop（任务终止）")
-        elif target:
-            t_field = get_field(fields, target)
-            if t_field is None:
-                print(f"  → 路由: {verdict} → {target}（目标字段不存在，仅提示）")
-            elif state.get(target) == "passed":
-                append_state(task_dir, fields, target, "pending", note=f"回修")
-                for ff in fields:
-                    if ff["field"] != target and field_inputs(ff).intersection({target}):
-                        append_state(task_dir, fields, ff["field"], "pending", note=f"下游回修")
-                print(f"  → 路由: {verdict} → {target}（回修：{target} 重置为 pending，下游同步重置）")
-            else:
-                print(f"  → 路由: {verdict} → {target}")
+    # generate：产物验证通过 → 追加状态行
+    if produce == "generate":
+        append_state(task_dir, fields, fid, "passed", note="执行完成")
+        print(f"{fid} PASSED ✓")
         return 0
 
-    # generate：状态列写 passed
-    append_state(task_dir, fields, fid, "passed", note=f"执行完成")
-    print(f"{fid} PASSED ✓")
+    # discriminate：读判断值 → 追加判断行 → 路由
+    routing = field.get("routing") or module.get("routing") or {}
+    try:
+        with open(art_file, "r", encoding="utf-8-sig") as f:
+            content = json.load(f)
+    except Exception:
+        content = {}
+    verdict = None
+    for item in (module.get("output_schema") or {}).get("required", []):
+        if item in content and isinstance(content[item], str):
+            verdict = content[item]
+            break
+    if verdict is None:
+        print(f"  ⚠ 判别式 {fid} 未找到判断项值（routing 无法生效）")
+        append_state(task_dir, fields, fid, "passed", note="判断项缺失")
+        return 0
+    if verdict not in routing:
+        print(f"  ✗ 判别式 {fid} 判断值 {verdict} 不在路由合法域 {sorted(routing.keys())}")
+        append_state(task_dir, fields, fid, "failed", note=f"路由非法 {verdict}")
+        return 1
+
+    append_state(task_dir, fields, fid, verdict, note=f"判别 {verdict}")
+    print(f"{fid} 判断 = {verdict} ✓")
+    target = routing.get(verdict)
+    if target == "stop":
+        print(f"  → 路由: {verdict} → stop（任务终止）")
+    elif target:
+        t_field = get_field(fields, target)
+        if t_field is None:
+            print(f"  → 路由: {verdict} → {target}（目标字段不存在，仅提示）")
+        else:
+            # 物化回修：目标产物存在 → 删除（=未完成），下游依赖者产物同步删除
+            removed = []
+            for ff in fields:
+                dep_ok = True
+                for dep in field_inputs(ff):
+                    if dep == target and ff["field"] != target:
+                        dep_ok = False
+                        break
+                if ff["field"] == target or not dep_ok:
+                    fp = os.path.join(task_dir, f"artifacts/{ff['field']}.json")
+                    if os.path.exists(fp):
+                        os.remove(fp)
+                        removed.append(ff["field"])
+            print(f"  → 路由: {verdict} → {target}（回修：删除产物 {'、'.join(removed) or '(无)'}）")
     return 0
 
 
 def cmd_retry(task_dir, fid):
+    """重试 = 删除本字段产物（物化语义：产物没了=未完成=可重跑）。"""
     data = load_steps(task_dir)
     field = get_field(data["fields"], fid)
     if field is None:
         sys.exit(f"字段不存在: {fid}")
-    state = load_state(task_dir)
-    cur = state.get(fid) or None
-    if cur != "failed":
-        sys.exit(f"只有 failed 字段可 retry（当前 {cur}）")
-    append_state(task_dir, data["fields"], fid, "pending", note="重试")
-    print(f"{fid} → pending（重试）")
+    fp = os.path.join(task_dir, f"artifacts/{fid}.json")
+    if not os.path.exists(fp):
+        sys.exit(f"产物不存在: {fid}（无产物可重试）")
+    os.remove(fp)
+    append_state(task_dir, data["fields"], fid, "retry", note="重试（产物删除）")
+    print(f"{fid} → 未完成（产物已删除，可重跑）")
 
 
 def cmd_reset(task_dir, fid):
+    """重新编排后重置 = 删除本字段产物（回到未完成态）。"""
     data = load_steps(task_dir)
     field = get_field(data["fields"], fid)
     if field is None:
         sys.exit(f"字段不存在: {fid}")
-    state = load_state(task_dir)
-    cur = state.get(fid) or None
-    if cur != "needs_reorchestration":
-        sys.exit(f"只有 needs_reorchestration 字段可 reset（当前 {cur}）")
-    append_state(task_dir, data["fields"], fid, "pending", note="重新编排后重置")
-    print(f"{fid} → pending（重新编排完成）")
+    fp = os.path.join(task_dir, f"artifacts/{fid}.json")
+    if os.path.exists(fp):
+        os.remove(fp)
+    append_state(task_dir, data["fields"], fid, "reset", note="重新编排后重置")
+    print(f"{fid} → 未完成（产物已删除，可重跑）")
 
 
 def main():
