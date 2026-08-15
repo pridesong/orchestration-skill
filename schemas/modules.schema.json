@@ -1,0 +1,65 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "modules.schema.json",
+  "title": "Module Library",
+  "description": "模块库：积木式装配单元。级别一=produce（状态机语义：generate 产出落盘推进 / discriminate 判断路由分支）；级别二=mind（认知参数集，决定 forbidden）。编排者选模块 + 连线，不发明协议。",
+  "type": "object",
+  "required": ["modules"],
+  "properties": {
+    "modules": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "produce", "mind", "output_schema"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^mod-" },
+          "name": { "type": "string", "minLength": 1 },
+          "produce": {
+            "enum": ["generate", "discriminate"],
+            "description": "级别一：状态机语义。generate=产出物落盘即推进（信息 无→有）；discriminate=根据产出判断路由下一步方向（分支点）。"
+          },
+          "mind": {
+            "type": "string",
+            "pattern": "^mind-",
+            "description": "级别二：认知参数集（决定 forbidden/mode）。由产出类别推导的默认 mind 可在模块中覆盖。"
+          },
+          "input_schema": {
+            "type": "object",
+            "description": "输入契约：{字段名: 类型/来源引用}。依赖由输入引用机械推导（A 的输出喂给 B 的输入 → A→B 依赖成立）。"
+          },
+          "output_schema": {
+            "type": "object",
+            "required": ["required"],
+            "description": "产出契约：required 字段列表（generate 的产物结构 / discriminate 的判断项）。",
+            "properties": {
+              "required": { "type": "array", "items": { "type": "string" } }
+            }
+          },
+          "routing": {
+            "type": "object",
+            "description": "仅 discriminate：判断值 → 下一步方向（目标字段或 stop）。值合法域 = routing 的 keys。",
+            "additionalProperties": { "type": "string" }
+          },
+          "skills": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "能力插槽（skill）：本模块所需 skill。空/缺失 = 无。"
+          },
+          "mcp": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "能力插槽（MCP）：本模块所需 MCP。空/缺失 = 无。"
+          },
+          "action": { "type": "string", "description": "执行动作描述（覆盖 mind 默认）" },
+          "verify": { "type": "string", "description": "模块自身验证方式（覆盖 mind 默认）" },
+          "forbidden": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "模块级命题 forbidden（追加到 mind forbidden 之后）"
+          }
+        }
+      }
+    }
+  }
+}

@@ -2,36 +2,23 @@
   "output_template": {
     "steps.json": {
       "task_id": "",
-      "version": "0.1.0",
-      "steps": [
+      "version": "0.2.0",
+      "fields": [
         {
-          "id": "s001",
+          "field": "generate_01",
           "name": "",
-          "description": "",
-          "input": {},
-          "output": {
-            "file": "artifacts/s001.json",
-            "schema": { "required": [] }
-          },
-          "depends_on": [],
-          "op_ref": "",
-          "mind_ref": "",
+          "module": "mod-generate",
+          "inputs": {},
           "acceptance_criteria": [""],
           "status": "pending"
-        }
-      ]
-    },
-    "op-table.json": {
-      "operations": [
+        },
         {
-          "id": "op-",
+          "field": "discriminate_01_verdict",
           "name": "",
-          "category": "query|generate|verify|audit|materialize|transform|custom",
-          "condition": "",
-          "action": "",
-          "verify": "",
-          "required_skills": [],
-          "required_mcp": []
+          "module": "mod-verify",
+          "inputs": {},
+          "routing": { "pass": "generate_02", "fail": "generate_01" },
+          "status": "pending"
         }
       ]
     },
@@ -40,58 +27,58 @@
         {
           "id": "mind-",
           "name": "",
+          "type": "constraint",
+          "role": "execute",
+          "forbidden_density": "precise",
           "params": {},
+          "forbidden": [],
           "apply_to": []
         }
       ]
     }
   },
   "fill": [
-    "steps.json.steps: complete step sequence per data.task; every step gets id/name/output/depends_on/op_ref/mind_ref/acceptance_criteria/status=pending",
-    "op-table.json.operations: define only ops actually referenced by steps; reuse template ops (op-query/op-generate/op-verify/op-materialize) when they fit; declare required_skills/required_mcp when an op needs an external capability",
-    "minds.json.minds: define minds referenced by steps; reference existing mind params (mind-default/mind-audit) when they fit"
+    "steps.json.fields[]: 每行 = { field, name, module, inputs, routing?, acceptance_criteria?, status }。field 命名：generate_N（产出落盘即推进）或 discriminate_N_xxx（判断项值路由分支）。module 从 modules.json 库挑选（mod-generate/mod-extract/mod-transform/mod-query/mod-reason/mod-fill/mod-verify/mod-audit/mod-classify）",
+    "discriminate 字段必须有 routing：判断值 → 目标字段（generate_N）或 stop。routing 键集 = 判断项合法值域",
+    "minds.json.minds: 定义 fields 引用/覆盖的 mind；引用现有 mind 参数集（mind-write/mind-extract/mind-audit 等）而非发明"
   ],
   "rules": [
-    "steps must be atomic: each step independently verifiable with a concrete artifact and mechanical acceptance criteria",
-    "acceptance_criteria must be mechanically checkable: file exists / field non-empty / count threshold / format compliance; never 'looks reasonable' or 'verify quality'",
-    "coupling hotspots must become step boundaries: where errors propagate densely (shared mutable code, cross-system API friction), split into separate steps with materialized handoff",
-    "granularity calibrated by error-propagation radius: too coarse leaves hidden chains inside a step; too fine explodes step count and overhead",
-    "minimize depends_on: parallel-first, independent steps must not be serialized",
-    "reuse ops: do not create new operations when existing ones suffice; keep op vocabulary convergent",
-    "failure containment: a step's failure must affect only that step, not propagate downstream",
-    "mind matching: exploration/audit steps use mind-audit; mechanical execution steps use mind-default; reuse existing mind-params instead of inventing new ones",
-    "capability slots: when an op needs an external skill or MCP tool, declare it on the op (required_skills / required_mcp, non-empty-string arrays; empty = none); a step may add step-level extras (extra_skills / extra_mcp) on top of its op; these slots are injected into the T3 dispatch so the executor assembles them directly instead of discovering them",
-    "capability provenance: required_skills / required_mcp / extra_skills / extra_mcp MUST name capabilities that exist in capabilities.json (read data.capabilities); never invent a skill or MCP server that is not in the local capability inventory",
-    "anti-anchoring: do not copy a template_ref structure verbatim — if data.template_ref is present, treat it as a skeleton to adapt to data.task, not a fixed sequence; the step sequence must be derived from the task, not from template familiarity",
-    "anti-hedging: every step must have a definite op_ref, mind_ref, and output.file — no placeholder steps, no 'TBD' descriptions, no steps that exist only to look thorough",
-    "mind-orchestrator (编排者思维，LLM 心理学约束，与 minds.json 的 mind-orchestrator 定义一致)：对抗三个默认路径——① C05 早期锚定：先列出任务的独立子目标再定步骤，禁止跳过目标分解直接写 steps；② C03 路径锁定：每个步骤的 op_ref/mind_ref 必须由该步骤要回答的问题驱动，不是由模板熟悉度驱动；③ C02 执行启动缺失：步骤必须可机械验证，禁止 looks reasonable 式验收标准。编排完成后自检：每个步骤的 acceptance_criteria 是否机械可查？是否还有可并行却串行的步骤？是否引用了 capabilities.json 中不存在的能力？"
+    "模块装配优先：能用模块库的模块就不自造协议——module 决定 produce（generate/discriminate）、mind 参数集、output_schema、默认 forbidden",
+    "generate 字段：产出 artifacts/<field>.json，落盘 + schema 验证即推进；不要给它 routing",
+    "discriminate 字段：产出判断项（如 verdict），值必须命中 routing 键；routing 目标必须是存在的字段或 stop——判别式是分支点，让状态机从线性变树",
+    "inputs 连线：{参数名: 来源}，来源是前序字段名（generate_01）或 artifacts/ 相对路径；依赖由此机械推导，不要手写 depends_on",
+    "链路确立：先列出任务的独立子目标（哪些产出、哪些判断），再按依赖连成字段序列；generate 序列编号递增",
+    "mind 匹配：generate 用 mind-write/mind-extract/mind-transform/mind-query/mind-reason/mind-fill；discriminate 用 mind-verify/mind-audit/mind-classify——由模块默认，仅在需要时 mind_ref 覆盖",
+    "acceptance_criteria 可追加（模块 verify 之后），必须机械可检查",
+    "capability provenance: 模块自带的 skills/mcp 来自 modules.json；若需额外能力在任务级 modules.json 添加模块，不得在 steps.json 发明能力",
+    "mind-orchestrator (编排者思维，LLM 心理学约束)：对抗三个默认路径——① C05 早期锚定：先列出任务的独立子目标（产出/判断）再定字段序列，禁止跳过目标分解直接写 fields；② C03 路径锁定：模块选择必须由该字段要回答的问题驱动，不是由模板熟悉度驱动；③ C02 执行启动缺失：每个字段的验收必须机械可查，禁止 looks reasonable。编排完成后自检：每个字段的 module 是否在模块库？discriminate 是否都有 routing 且目标存在？inputs 连线是否指向存在的字段？是否还有可并行却串行的字段？"
   ],
   "schema": {
     "steps": "schemas/steps.schema.json",
-    "op-table": "schemas/op-table.schema.json",
     "minds": "schemas/minds.schema.json"
   },
   "data": {
     "task": "<task goal after intent condensation>",
     "constraints": ["<implicit constraints from user intent>"],
     "deliverable": "<final deliverable definition>",
-    "template_ref": "<optional: existing three-piece skeleton from templates/ or examples/>",
+    "template_ref": "<optional: existing assembly skeleton from templates/ or examples/>",
     "intel_ref": "<optional: step1 intelligence artifact path, e.g. artifacts/step1_intel.json>",
-    "capabilities": "<task_dir>/artifacts/capabilities.json — local capability inventory (skills + mcp_servers) produced by scripts/discover.py; capability slots MUST draw from this list"
+    "modules_ref": "<task_dir>/modules.json 或 skill 内置 modules/modules.json — 模块库（produce/mind/input_schema/output_schema/routing/skills/mcp）",
+    "capabilities": "<task_dir>/artifacts/capabilities.json — local capability inventory (skills + mcp_servers) produced by scripts/discover.py"
   },
   "write": {
     "steps.json": "<task_dir>/steps.json",
-    "op-table.json": "<task_dir>/op-table.json",
     "minds.json": "<task_dir>/minds.json"
   },
   "forbidden": [
-    "do not invent op_ref or mind_ref not defined in the corresponding tables",
-    "do not leave acceptance_criteria non-mechanical",
-    "do not create dependency cycles",
+    "do not invent modules that already exist in modules.json — reuse the library",
+    "do not create fields without a module",
+    "do not leave a discriminate field without routing (or module default routing)",
+    "do not create dependency cycles — inputs 连线与 routing 目标不得形成回路",
     "do not set status to anything other than pending",
     "do not write prose explanations outside the JSON artifacts",
-    "do not skip output.file: every step must materialize an artifact",
-    "do not declare a required_skill / required_mcp / extra_skill / extra_mcp that is absent from capabilities.json",
-    "do not reproduce a template_ref step-for-step when data.task differs from the template's task — derive the sequence from the task"
+    "do not skip output: every generate field materializes artifacts/<field>.json",
+    "do not declare capabilities absent from capabilities.json or the module library",
+    "do not reproduce a template_ref field-for-field when data.task differs — derive the assembly from the task"
   ]
 }

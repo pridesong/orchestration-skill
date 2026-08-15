@@ -1,0 +1,130 @@
+{
+  "modules": [
+    {
+      "id": "mod-generate",
+      "name": "生成（无中生有）",
+      "produce": "generate",
+      "mind": "mind-write",
+      "input_schema": {},
+      "output_schema": { "required": ["content"] },
+      "action": "按输入要求生成产出，物化到 write 路径",
+      "verify": "产物满足 output_schema 与验收标准"
+    },
+    {
+      "id": "mod-extract",
+      "name": "提取（非结构化→结构化）",
+      "produce": "generate",
+      "mind": "mind-extract",
+      "input_schema": { "material": "path" },
+      "output_schema": { "required": ["items"] },
+      "action": "从材料提取结构化字段，保留原文语义，逐项附 evidence",
+      "verify": "产物字段非空，evidence 为原文片段",
+      "forbidden": [
+        "禁止增删材料语义——提取不改写原意",
+        "禁止用路径式引用充当 evidence"
+      ]
+    },
+    {
+      "id": "mod-transform",
+      "name": "变换（形态转换，信息守恒）",
+      "produce": "generate",
+      "mind": "mind-transform",
+      "input_schema": { "source": "path" },
+      "output_schema": { "required": ["output"] },
+      "action": "转换输入形态（翻译/重述/格式转换），信息守恒",
+      "verify": "输出保留输入全部关键信息",
+      "forbidden": [
+        "禁止增删信息——信息守恒",
+        "禁止改变语义——只换形态"
+      ]
+    },
+    {
+      "id": "mod-query",
+      "name": "查询（外部取回）",
+      "produce": "generate",
+      "mind": "mind-query",
+      "input_schema": { "query": "string" },
+      "output_schema": { "required": ["results"] },
+      "action": "检索外部信息并物化结果",
+      "verify": "结果物化为文件，引用可溯源",
+      "forbidden": [
+        "禁止凭记忆作答——必须真实检索",
+        "禁止编造不存在的来源"
+      ]
+    },
+    {
+      "id": "mod-reason",
+      "name": "推理（多步推导）",
+      "produce": "generate",
+      "mind": "mind-reason",
+      "input_schema": { "premises": "path" },
+      "output_schema": { "required": ["conclusion", "steps"] },
+      "action": "从前提多步推导结论，保留推导链",
+      "verify": "结论可由 steps 推导链复查",
+      "forbidden": [
+        "禁止跳步——每步推导必须显式",
+        "禁止只给结论不给推导过程"
+      ]
+    },
+    {
+      "id": "mod-fill",
+      "name": "填空（模板补全）",
+      "produce": "generate",
+      "mind": "mind-fill",
+      "input_schema": { "template": "path" },
+      "output_schema": { "required": ["filled"] },
+      "action": "按模板结构补全字段",
+      "verify": "填充后结构完整，无缺字段",
+      "forbidden": [
+        "禁止改动模板结构——只填不删改",
+        "禁止跳字段"
+      ]
+    },
+    {
+      "id": "mod-verify",
+      "name": "验证（对/错判别）",
+      "produce": "discriminate",
+      "mind": "mind-verify",
+      "input_schema": { "target": "path" },
+      "output_schema": { "required": ["verdict"] },
+      "routing": { "pass": "", "fail": "" },
+      "action": "对照验收标准判定目标通过/不通过",
+      "verify": "verdict 必须是 pass 或 fail，附证据",
+      "forbidden": [
+        "禁止无证据判定",
+        "禁止模糊标准——pass/fail 必须明确"
+      ]
+    },
+    {
+      "id": "mod-audit",
+      "name": "审计（找错判别）",
+      "produce": "discriminate",
+      "mind": "mind-audit",
+      "input_schema": { "target": "path" },
+      "output_schema": { "required": ["verdict", "issues"] },
+      "routing": { "pass": "", "revise": "", "reject": "" },
+      "action": "独立审计目标，找错优先，每条意见附 evidence",
+      "verify": "verdict ∈ {pass, revise, reject}，issues 每条含 evidence",
+      "forbidden": [
+        "禁止谄媚放行——verdict 默认 revise 倾向",
+        "禁止无 evidence 意见",
+        "禁止替目标辩护"
+      ]
+    },
+    {
+      "id": "mod-classify",
+      "name": "分类（多类判别）",
+      "produce": "discriminate",
+      "mind": "mind-classify",
+      "input_schema": { "target": "path" },
+      "output_schema": { "required": ["category"] },
+      "routing": {},
+      "action": "将目标归入定义的类别",
+      "verify": "category 必须是定义的类别之一",
+      "forbidden": [
+        "禁止混淆类别边界",
+        "禁止输出未定义的类别"
+      ]
+    }
+  ]
+}

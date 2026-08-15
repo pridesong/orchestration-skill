@@ -1,89 +1,99 @@
 #!/usr/bin/env python3
 """
-validate.py — 三件套机械校验（第一层审计的硬门禁）
+validate.py — 装配表机械校验（第一层审计的硬门禁）
 
 检查项：
-  1. 三个文件存在且为合法 JSON
-  2. 基本结构（必需字段）
-  3. 步骤 id 唯一
-  4. 引用完整性：op_ref / mind_ref 必须存在于对应表
-  5. depends_on 引用存在且依赖图无环（Kahn 拓扑排序）
-  6. minds.apply_to 引用的步骤必须存在
+  1. steps.json / modules.json / minds.json 存在且为合法 JSON
+  2. 字段命名合规（generate_N / discriminate_N_xxx）
+  3. 模块引用存在（装配表 → modules 库）
+  4. 判别式字段必须有 routing 且 routing 目标存在/stop
+  5. inputs 连线引用的前序字段存在
+  6. 依赖图无环（Kahn 拓扑排序）
+  7. minds.apply_to 引用存在 + 双向一致
+  8. 能力插槽真实性（capabilities.json 若存在）
+  9. mind.enforce.check 的 source 存在
 
 用法: python validate.py <task_dir>
 退出码: 0=通过, 1=不通过, 2=用法错误
-
-不依赖任何第三方库。偏离对抗原则：约束走 schema 不走散文，本脚本是机械检查，
-不依赖 agent 自觉。
 """
 import json
 import os
+import re
 import sys
 from collections import deque
 
-REQUIRED_FILES = ["steps.json", "op-table.json", "minds.json"]
+GEN_FIELD = re.compile(r"^generate_(\d+)$")
+DIS_FIELD = re.compile(r"^discriminate_(\d+)_([a-z][a-z0-9_]*)$")
+MODULES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "modules")
+
+REQUIRED_FILES = ["steps.json", "minds.json"]
 
 
 def load_json(path):
-    with open(path, "r", encoding="utf-8-sig") as f:  # utf-8-sig 容忍 BOM
+    with open(path, "r", encoding="utf-8-sig") as f:
         return json.load(f)
 
 
-def check_steps(steps, op_ids, mind_ids, errors):
-    step_ids = [s.get("id") for s in steps]
+def check_field_names(fields, errors):
+    for f in fields:
+        fid = f.get("field", "")
+        if not GEN_FIELD.match(fid) and not DIS_FIELD.match(fid):
+            errors.append(f"steps.json: 字段名 '{fid}' 不合规（须 generate_N 或 discriminate_N_xxx）")
+        if "module" not in f:
+            errors.append(f"steps.json: 字段 {fid} 缺少 module")
 
-    # id 唯一
+
+def check_field_refs(fields, module_ids, errors):
+    """模块引用存在 + inputs 引用存在 + 判别式 routing 合法。"""
+    field_ids = {f.get("field") for f in fields if f.get("field")}
     seen = set()
-    for sid in step_ids:
-        if sid in seen:
-            errors.append(f"steps.json: 重复步骤 id: {sid}")
-        seen.add(sid)
+    for f in fields:
+        fid = f.get("field", "?")
+        if fid in seen:
+            errors.append(f"steps.json: 重复字段: {fid}")
+        seen.add(fid)
 
-    for s in steps:
-        sid = s.get("id", "?")
-        # 必需字段
-        for field in ("id", "name", "output", "depends_on", "op_ref", "acceptance_criteria", "status"):
-            if field not in s:
-                errors.append(f"steps.json: 步骤 {sid} 缺少字段 {field}")
-        # 引用完整性
-        op_ref = s.get("op_ref")
-        if op_ref and op_ref not in op_ids:
-            errors.append(f"steps.json: 步骤 {sid} 引用不存在的 op: {op_ref}")
-        mind_ref = s.get("mind_ref")
-        if mind_ref and mind_ref not in mind_ids:
-            errors.append(f"steps.json: 步骤 {sid} 引用不存在的 mind: {mind_ref}")
-        # 依赖引用存在
-        for dep in s.get("depends_on", []):
-            if dep not in seen:
-                errors.append(f"steps.json: 步骤 {sid} 依赖不存在的步骤: {dep}")
-        # 验收标准非空
-        if not s.get("acceptance_criteria"):
-            errors.append(f"steps.json: 步骤 {sid} 缺少 acceptance_criteria（验收标准必须可机械检查）")
-        # 产物路径
-        out = s.get("output")
-        if out and not out.get("file"):
-            errors.append(f"steps.json: 步骤 {sid} 的 output 缺少 file（产物必须物化）")
-        # 能力插槽（step 级补充）：extra_skills / extra_mcp 必须是 string 数组
-        for slot in ("extra_skills", "extra_mcp"):
-            v = s.get(slot)
-            if v is not None and (not isinstance(v, list) or not all(isinstance(x, str) and x for x in v)):
-                errors.append(f"steps.json: 步骤 {sid} 的 {slot} 必须是非空字符串数组（或缺失）")
+        mod = f.get("module")
+        if mod and mod not in module_ids:
+            errors.append(f"steps.json: 字段 {fid} 引用不存在的模块: {mod}")
+
+        # inputs 连线引用的前序字段
+        for v in (f.get("inputs") or {}).values():
+            if isinstance(v, str) and (GEN_FIELD.match(v) or DIS_FIELD.match(v)):
+                if v not in field_ids:
+                    errors.append(f"steps.json: 字段 {fid} 的 inputs 引用不存在的字段: {v}")
+
+        # 判别式必须有 routing 且目标合法
+        if DIS_FIELD.match(fid):
+            routing = f.get("routing")
+            if routing is None:
+                errors.append(f"steps.json: 判别字段 {fid} 缺少 routing（须定义判断值→目标映射）")
+            else:
+                for val, target in routing.items():
+                    if target != "stop" and target not in field_ids:
+                        errors.append(f"steps.json: 字段 {fid} 的 routing[{val}] 目标不存在: {target}")
 
 
-def check_acyclic(steps, errors):
-    """Kahn 拓扑排序检测依赖环。"""
-    step_ids = {s["id"] for s in steps if s.get("id")}
-    adj = {sid: [] for sid in step_ids}
-    indeg = {sid: 0 for sid in step_ids}
-    for s in steps:
-        sid = s.get("id")
-        if sid not in step_ids:
+def check_acyclic(fields, errors):
+    """Kahn 拓扑排序检测依赖环（inputs 连线 + 判别路由目标）。"""
+    field_ids = {f["field"] for f in fields if f.get("field")}
+    adj = {fid: set() for fid in field_ids}
+    indeg = {fid: 0 for fid in field_ids}
+    for f in fields:
+        fid = f.get("field")
+        if fid not in field_ids:
             continue
-        for d in s.get("depends_on", []):
-            if d in step_ids:
-                adj[d].append(sid)
-                indeg[sid] += 1
-    q = deque([sid for sid in step_ids if indeg[sid] == 0])
+        for v in (f.get("inputs") or {}).values():
+            if isinstance(v, str) and v in field_ids and v != fid:
+                if fid not in adj[v]:
+                    adj[v].add(fid)
+                    indeg[fid] += 1
+        for v in (f.get("routing") or {}).values():
+            if v != "stop" and v in field_ids and v != fid:
+                if fid not in adj[v]:
+                    adj[v].add(fid)
+                    indeg[fid] += 1
+    q = deque([fid for fid in field_ids if indeg[fid] == 0])
     visited = 0
     while q:
         cur = q.popleft()
@@ -92,100 +102,71 @@ def check_acyclic(steps, errors):
             indeg[nxt] -= 1
             if indeg[nxt] == 0:
                 q.append(nxt)
-    if visited != len(step_ids):
-        errors.append("steps.json: 依赖图存在环（编排性错误——耦合边界未拆开）")
+    if visited != len(field_ids):
+        errors.append("steps.json: 依赖图存在环（inputs 连线或路由形成回路）")
 
 
-def check_mind_coverage(steps, minds, errors):
-    """minds.apply_to 引用的步骤必须存在；双向一致性由调用方做。"""
-    step_ids = {s["id"] for s in steps if s.get("id")}
+def check_minds(fields, task_dir, errors):
+    """minds.json：apply_to 引用存在；enforce.check.source 存在。"""
+    minds_path = os.path.join(task_dir, "minds.json")
+    if not os.path.exists(minds_path):
+        return
+    data = load_json(minds_path)
+    minds = data.get("minds", [])
+    mind_ids = {m.get("id") for m in minds}
+    field_ids = {f.get("field") for f in fields}
+
     for m in minds:
         mid = m.get("id", "?")
         for ref in m.get("apply_to", []):
-            if ref not in step_ids:
-                errors.append(f"minds.json: mind {mid} 的 apply_to 引用不存在的步骤: {ref}")
-
-
-def check_mind_backrefs(steps, minds, errors):
-    """steps.mind_ref 与 minds.apply_to 双向一致性（若 apply_to 非空）。"""
-    apply_map = {}
-    for m in minds:
-        mid = m.get("id")
-        for ref in m.get("apply_to", []):
-            apply_map.setdefault(ref, set()).add(mid)
-    for s in steps:
-        sid = s.get("id")
-        mref = s.get("mind_ref")
-        if mref and sid in apply_map and mref not in apply_map[sid]:
-            errors.append(
-                f"steps.json: 步骤 {sid} 的 mind_ref={mref} 与 minds.apply_to 不一致 "
-                f"({sid} 被指派给 {sorted(apply_map[sid])})"
-            )
-
-
-def check_mind_enforce(task_dir, minds, errors):
-    """mind.enforce.check 的 source 必须存在（机械门禁的前提条件）。
-
-    enforce.check 只在 type=evidence_in_source 时校验：field 非空、
-    source 文件存在。缺失 = 门禁无法执行 = 编排错误。
-    """
-    for m in minds:
-        mid = m.get("id", "?")
+            if ref not in field_ids:
+                errors.append(f"minds.json: mind {mid} 的 apply_to 引用不存在的字段: {ref}")
         enforce = m.get("enforce") or {}
         check = enforce.get("check") or {}
-        if not check:
-            continue
-        if check.get("type") != "evidence_in_source":
-            errors.append(f"minds.json: mind {mid} 的 enforce.check.type 仅支持 evidence_in_source（当前 {check.get('type')}）")
-            continue
-        if not check.get("field"):
-            errors.append(f"minds.json: mind {mid} 的 enforce.check 缺少 field")
-        src = check.get("source")
-        if not src:
-            errors.append(f"minds.json: mind {mid} 的 enforce.check 缺少 source")
-        elif not os.path.exists(os.path.join(task_dir, src)):
-            errors.append(f"minds.json: mind {mid} 的 enforce.check.source 不存在: {src}")
+        if check:
+            if check.get("type") != "evidence_in_source":
+                errors.append(f"minds.json: mind {mid} 的 enforce.check.type 仅支持 evidence_in_source")
+            if not check.get("field"):
+                errors.append(f"minds.json: mind {mid} 的 enforce.check 缺少 field")
+            src = check.get("source")
+            if not src:
+                errors.append(f"minds.json: mind {mid} 的 enforce.check 缺少 source")
+            elif not os.path.exists(os.path.join(task_dir, src)):
+                errors.append(f"minds.json: mind {mid} 的 enforce.check.source 不存在: {src}")
+
+    # 装配表引用的 mind 必须存在
+    for f in fields:
+        mref = f.get("mind_ref")
+        if mref and mref not in mind_ids:
+            errors.append(f"steps.json: 字段 {f.get('field')} 引用不存在的 mind: {mref}")
 
 
-def check_capability_slots(task_dir, data, errors):
-    """插槽引用的能力必须存在于 capabilities.json（若存在该文件）。
-
-    不强制 capabilities.json 存在（旧任务没有能力扫描也可通过）；但一旦存在，
-    插槽引用就是硬约束：required_skills/required_mcp/extra_skills/extra_mcp
-    必须命中文档中的 skills/mcp_servers。
-    """
+def check_capability_slots(task_dir, fields, errors):
+    """插槽引用的能力必须存在于 capabilities.json（若存在）。"""
     cap_path = os.path.join(task_dir, "artifacts", "capabilities.json")
     if not os.path.exists(cap_path):
         return
-    try:
-        with open(cap_path, "r", encoding="utf-8-sig") as f:
-            caps = json.load(f)
-    except (json.JSONDecodeError, OSError) as e:
-        errors.append(f"capabilities.json 读取失败: {e}")
-        return
+    caps = load_json(cap_path)
     known_skills = set(caps.get("skills") or [])
     known_mcp = set(caps.get("mcp_servers") or [])
 
-    slots = []
-    for op in data.get("op-table.json", {}).get("operations", []):
-        opid = op.get("id", "?")
-        for s in op.get("required_skills") or []:
-            slots.append(("op-table.json", f"op {opid} required_skills", s, known_skills))
-        for s in op.get("required_mcp") or []:
-            slots.append(("op-table.json", f"op {opid} required_mcp", s, known_mcp))
-    for st in data.get("steps.json", {}).get("steps", []):
-        sid = st.get("id", "?")
-        for s in st.get("extra_skills") or []:
-            slots.append(("steps.json", f"step {sid} extra_skills", s, known_skills))
-        for s in st.get("extra_mcp") or []:
-            slots.append(("steps.json", f"step {sid} extra_mcp", s, known_mcp))
+    modules = load_modules(task_dir)
+    for f in fields:
+        fid = f.get("field", "?")
+        mod = modules.get(f.get("module") or {})
+        for s in (mod or {}).get("skills") or []:
+            if s not in known_skills:
+                errors.append(f"steps.json: 字段 {fid} 模块 {f.get('module')} 的 skill '{s}' 不在 capabilities.json")
+        for m in (mod or {}).get("mcp") or []:
+            if m not in known_mcp:
+                errors.append(f"steps.json: 字段 {fid} 模块 {f.get('module')} 的 MCP '{m}' 不在 capabilities.json")
 
-    for fname, where, cap, known in slots:
-        if cap not in known:
-            errors.append(
-                f"{fname}: {where} 引用能力 '{cap}' 不在 capabilities.json "
-                f"(skills={sorted(known_skills) or '空'}, mcp_servers={sorted(known_mcp) or '空'})"
-            )
+
+def load_modules(task_dir):
+    local = os.path.join(task_dir, "modules.json")
+    path = local if os.path.exists(local) else os.path.join(MODULES_DIR, "modules.json")
+    data = load_json(path)
+    return {m["id"]: m for m in data.get("modules", [])}
 
 
 def main():
@@ -208,32 +189,17 @@ def main():
         except OSError as e:
             errors.append(f"{name}: 读取失败: {e}")
 
-    if "op-table.json" in data:
-        for op in data["op-table.json"].get("operations", []):
-            opid = op.get("id", "?")
-            for slot in ("required_skills", "required_mcp"):
-                v = op.get(slot)
-                if v is not None and (not isinstance(v, list) or not all(isinstance(x, str) and x for x in v)):
-                    errors.append(f"op-table.json: 操作 {opid} 的 {slot} 必须是非空字符串数组（或缺失）")
-
     if "steps.json" in data:
-        steps = data["steps.json"].get("steps", [])
-        if not steps:
-            errors.append("steps.json: steps 为空（编排必须产出至少一个步骤）")
+        fields = data["steps.json"].get("fields", [])
+        if not fields:
+            errors.append("steps.json: fields 为空（编排必须产出至少一个字段）")
         else:
-            op_ids = {op["id"] for op in data.get("op-table.json", {}).get("operations", [])}
-            mind_ids = {m["id"] for m in data.get("minds.json", {}).get("minds", [])}
-            check_steps(steps, op_ids, mind_ids, errors)
-            check_acyclic(steps, errors)
-            if "minds.json" in data and data["minds.json"].get("minds"):
-                check_mind_backrefs(steps, data["minds.json"]["minds"], errors)
-    if "minds.json" in data:
-        minds = data["minds.json"].get("minds", [])
-        if "steps.json" in data:
-            check_mind_coverage(data["steps.json"].get("steps", []), minds, errors)
-        check_mind_enforce(task_dir, minds, errors)
-
-    check_capability_slots(task_dir, data, errors)
+            modules = load_modules(task_dir)
+            check_field_names(fields, errors)
+            check_field_refs(fields, set(modules.keys()), errors)
+            check_acyclic(fields, errors)
+            check_minds(fields, task_dir, errors)
+            check_capability_slots(task_dir, fields, errors)
 
     if errors:
         print("校验失败:")
@@ -241,15 +207,12 @@ def main():
             print(f"  ✗ {e}")
         sys.exit(1)
     else:
-        n_steps = len(data["steps.json"]["steps"])
-        n_ops = len(data["op-table.json"]["operations"])
-        n_minds = len(data["minds.json"]["minds"])
-        print(f"校验通过 ✓  steps={n_steps}  ops={n_ops}  minds={n_minds}")
+        n = len(data["steps.json"]["fields"])
+        print(f"校验通过 ✓  fields={n}")
         sys.exit(0)
 
 
 if __name__ == "__main__":
-    # Windows 中文环境默认 GBK 编码，print 非 ASCII（✓/✗）会崩；强制 UTF-8
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
     main()

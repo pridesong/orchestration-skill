@@ -2,24 +2,12 @@
   "task_id": "quant-001",
   "version": "0.2.0",
   "created_at": "2026-07-11",
-  "params": {
-    "top_n": 50,
-    "split": {
-      "is_ratio": 0.8,
-      "oos_ratio": 0.2
-    },
-    "oos_thresholds": {
-      "oos_sharpe_min": 0.0,
-      "oos_annual_return_min": 0.0,
-      "overturn_gap": 0.3
-    }
-  },
-  "steps": [
+  "fields": [
     {
-      "id": "s001",
+      "field": "generate_01",
       "name": "探查 v12 文档与 npz 数据结构（含全量只读基线）",
-      "description": "只读探查步：读取 v12 的 ARCHITECTURE.md / methodology.md / AGENTS.md 提炼体系要点；用 numpy 加载 data/ 下 5 个关键 npz（weather_full、nmf_weather、scores_5k_w63、selector_scores_100、terminal_panel），逐文件记录 keys / shapes / dtype，并记录 weather_full/nmf_weather 的字段时间戳键（dates_key，无则 null）与标签语义（pit_sources，供 s007 点对点审计）；确定面板(6416日×299股)-天气(6106日)-气候(滞后60日)-信号窗口(63日尾部)的对齐关系并显式记录（含 panel_length 与'63日尾部是否有状态标签'这一关键事实）；选定前向收益来源 terminal_panel.daily_return；递归枚举 v12_root 下全部文件（至少全部 .py/.npz/.md，含 data/ engine/ backtest/ docs/ 子目录）逐文件记录 SHA256 基线（v12_checksums 对象 {path: sha256}，供 s007 全量只读比对）",
-      "input": {
+      "module": "mod-query",
+      "inputs": {
         "v12_root": "D:/MyProject/QuantitativeElite_v12",
         "npz_files": [
           "weather_full.npz",
@@ -40,23 +28,6 @@
         ],
         "checksum_scope": "递归枚举 v12_root 下全部文件（含 data/ engine/ backtest/ docs/ 子目录）"
       },
-      "output": {
-        "file": "artifacts/s001_intel.json",
-        "schema": {
-          "required": [
-            "npz_schemas",
-            "alignment",
-            "return_source",
-            "v12_checksums",
-            "v12_checksum_scope",
-            "pit_sources",
-            "doc_pillars"
-          ]
-        }
-      },
-      "depends_on": [],
-      "op_ref": "op-query",
-      "mind_ref": "mind-audit",
       "acceptance_criteria": [
         "artifacts/s001_intel.json 文件存在且为合法 JSON",
         "npz_schemas 数组长度 >= 5，覆盖 weather_full/nmf_weather/scores_5k_w63/selector_scores_100/terminal_panel 五个文件",
@@ -71,35 +42,15 @@
         "pit_sources 含 weather_full 与 nmf_weather 两键，各含 dates_key/labels/index_meaning 字段（dates_key 可为 null，labels/index_meaning 非空）",
         "doc_pillars 数组长度 >= 3，每条含 title 与 summary 字段"
       ],
-      "status": "passed"
+      "status": "pending"
     },
     {
-      "id": "s002",
+      "field": "generate_02",
       "name": "构建市场状态（regime）序列与状态统计",
-      "description": "写 artifacts/regime_series.py：加载 weather_full.npz 与 nmf_weather.npz，按 s001 的 alignment 将天气状态 w_labels 与气候状态 c_labels 对齐到面板日索引，生成逐日状态序列并物化为 artifacts/regime_series.npz（day_weather、day_climate、panel_index）；统计各天气状态占用天数/占比、经验转移矩阵（与 weather_full.T_prob 逐元素核对绝对差）、各状态日收益统计（mean/vol/count，收益取 terminal_panel.daily_return 对齐段）；记录 nmf 窗口 day_ret 的对照统计；计算 lookahead_guard：对每个对齐日 t 计算标签源索引相对偏移 max_label_offset = max_t(max(weather_idx(t)-t, climate_idx(t)-t))，no_future_ref = (max_label_offset <= 0)，labeled_length = 对齐段长度（供 s004/s006 做 IS/OOS 切分、s007 做点对点审计）",
-      "input": {
-        "from": "s001"
+      "module": "mod-transform",
+      "inputs": {
+        "source": "generate_01"
       },
-      "output": {
-        "file": "artifacts/s002_regime.json",
-        "schema": {
-          "required": [
-            "n_weather",
-            "n_climate",
-            "occupancy",
-            "transition_matrix",
-            "per_state_ret_stats",
-            "nmf_window_stats",
-            "series_file",
-            "lookahead_guard"
-          ]
-        }
-      },
-      "depends_on": [
-        "s001"
-      ],
-      "op_ref": "op-transform",
-      "mind_ref": "mind-research",
       "acceptance_criteria": [
         "artifacts/s002_regime.json 文件存在且为合法 JSON",
         "occupancy 数组长度 == n_weather 且元素为非负整数，总和 == 状态序列长度",
@@ -112,34 +63,15 @@
         "lookahead_guard.labeled_length == 状态序列长度（occupancy 总和）",
         "artifacts/regime_series.py 文件存在"
       ],
-      "status": "passed"
+      "status": "pending"
     },
     {
-      "id": "s003",
+      "field": "generate_03",
       "name": "5000 信号池近期窗口 IC 筛选",
-      "description": "写 artifacts/signal_ic_pool.py：加载 scores_5k_w63.npz（5000 信号 × 63 日 × 299 股）与 terminal_panel.daily_return（按 s001 alignment 取对应 63 日段），逐日计算截面 Spearman IC（信号分 vs 次日收益），得每信号 IC 序列 → ic_mean/ic_std/icir；整体 IC 分布统计（均值/标准差/正 IC 占比）；按信号分层（Q1-Q5 分位组合）计算分层日收益与多空价差；输出按 |ic_mean| 排序的 top 信号清单。该池 IC 仅用于 s005 证据不足状态的回退阈值（分布分位），不参与主路由选择（主路由基于 s004 样本内段逐状态 IC）",
-      "input": {
-        "from": "s001"
+      "module": "mod-generate",
+      "inputs": {
+        "source": "generate_01"
       },
-      "output": {
-        "file": "artifacts/s003_pool_ic.json",
-        "schema": {
-          "required": [
-            "method",
-            "signal_count",
-            "npz_shape",
-            "ic_summary",
-            "per_signal_ic",
-            "stratified",
-            "top_signals"
-          ]
-        }
-      },
-      "depends_on": [
-        "s001"
-      ],
-      "op_ref": "op-analyze",
-      "mind_ref": "mind-research",
       "acceptance_criteria": [
         "method 字段 == \"spearman\"",
         "signal_count == 5000",
@@ -150,41 +82,18 @@
         "top_signals 数组长度 >= 10，每条含 id 与 ic_mean",
         "artifacts/signal_ic_pool.py 文件存在"
       ],
-      "status": "passed"
+      "status": "pending"
     },
     {
-      "id": "s004",
+      "field": "generate_04",
       "name": "100 信号树长面板 IC 与逐状态 IC（含样本内段证据）",
-      "description": "写 artifacts/signal_ic_long.py：加载 selector_scores_100.npz（100 树 × 6416 日 × 299 股）与 terminal_panel.daily_return；按 s002 对齐状态序列，将回测段（labeled_length）按日期切分：样本内 IS = 前 round(0.8 × labeled_length) 日，样本外 OOS = 其余；计算每树整体截面 Spearman IC / ICIR（全长段 descriptive 用 per_tree_ic，IS 段证据用 is_per_tree_ic）；逐天气状态计算全长段状态内 IC（per_state_ic，descriptive）与 IS 段状态内 IC（is_per_state_ic，路由选择证据，仅用 IS 日数据）；输出逐状态 IC 表（每状态 top_tree_id 与 top_ic、n_days）与状态区分度证据（route_differentiation：不同状态是否选择不同树；state_ic_rank_corr：树 IC 跨状态的 Spearman 秩相关）",
-      "input": {
-        "from": [
-          "s001",
-          "s002"
+      "module": "mod-generate",
+      "inputs": {
+        "source": [
+          "generate_01",
+          "generate_02"
         ]
       },
-      "output": {
-        "file": "artifacts/s004_long_ic.json",
-        "schema": {
-          "required": [
-            "method",
-            "n_trees",
-            "overall_ic",
-            "per_tree_ic",
-            "is_per_tree_ic",
-            "per_state_ic",
-            "is_per_state_ic",
-            "state_n_days",
-            "route_differentiation",
-            "state_ic_rank_corr"
-          ]
-        }
-      },
-      "depends_on": [
-        "s001",
-        "s002"
-      ],
-      "op_ref": "op-analyze",
-      "mind_ref": "mind-research",
       "acceptance_criteria": [
         "method 字段 == \"spearman\"",
         "n_trees == 100",
@@ -199,36 +108,18 @@
         "state_ic_rank_corr 为数值且 ∈ [-1, 1]",
         "artifacts/signal_ic_long.py 文件存在"
       ],
-      "status": "passed"
+      "status": "pending"
     },
     {
-      "id": "s005",
+      "field": "generate_05",
       "name": "生成状态路由表（基于样本内段证据）",
-      "description": "写 artifacts/build_route.py：基于 s004 样本内（IS）段逐状态 IC（is_per_state_ic）生成路由表——每个天气状态选择该状态 IS 段内 |IC| 最大的信号树作为该状态路由信号；对证据不足的状态（n_days < 20 或 |top_ic| 低于 s003 信号池 IC 分布 95% 分位阈值）回退到全局最优树（global_best = s004.is_per_tree_ic 中 |ic_mean| 最大者，同样只来自 IS 段证据）；物化 artifacts/route_table.json：route（{state: {tree_id, ic_mean, n_days, fallback}}）、global_best、fallback_rule、expected_gain（routed_ic_avg = is_per_state_ic 各状态 top_ic 的均值，global_ic = global_best.ic_mean）。路由选择只允许使用 IS 段统计量，OOS 段数据不参与选择",
-      "input": {
-        "from": [
-          "s003",
-          "s004"
+      "module": "mod-generate",
+      "inputs": {
+        "source": [
+          "generate_03",
+          "generate_04"
         ]
       },
-      "output": {
-        "file": "artifacts/s005_route_table.json",
-        "schema": {
-          "required": [
-            "n_states",
-            "route",
-            "global_best",
-            "fallback_rule",
-            "expected_gain"
-          ]
-        }
-      },
-      "depends_on": [
-        "s003",
-        "s004"
-      ],
-      "op_ref": "op-generate",
-      "mind_ref": "mind-research",
       "acceptance_criteria": [
         "n_states 为整数且 == s004.is_per_state_ic 长度",
         "route 对象键数 == n_states，每个值含 tree_id/ic_mean/n_days/fallback 字段",
@@ -240,40 +131,18 @@
         "artifacts/build_route.py 文件存在",
         "artifacts/route_table.json 文件存在"
       ],
-      "status": "passed"
+      "status": "pending"
     },
     {
-      "id": "s006",
+      "field": "discriminate_01_verdict",
       "name": "状态自适应策略 IS/OOS 双段回测",
-      "description": "写 artifacts/backtest_adaptive.py：将回测段按日期切分为样本内 IS（前 round(0.8 × labeled_length) 日，labeled_length 取 s002.lookahead_guard.labeled_length）与样本外 OOS（其余日）；实现向量化日频回测——逐日读取 s002 状态序列确定当日天气状态，按 s005 路由表取该状态信号树，从 selector_scores_100.npz 取该树当日截面分数，在 terminal_panel.in_universe 内选分数 top-N（N 固定为任务级 top_n=50）股票等权持有并取 T+1 收益；IS 段用 s005 路由回测得 is_metrics，OOS 段沿用同一训练段路由（不重估、不重选、不因 OOS 表现调整）回测得 oos_metrics；输出权益曲线（物化 artifacts/equity_curve.npz）与 IS/OOS 两套指标（年化收益/夏普/最大回撤/总收益/交易日数）；对照基线（全局最优单树非自适应、全市场等权）输出各基线 IS/OOS 指标；输出各状态内组合日收益统计（状态分组对比，覆盖全回测段）；计算 overturn 判定：overturn = (oos_metrics.sharpe < is_metrics.sharpe - 0.3) || (is_metrics.sharpe > 0 && oos_metrics.sharpe <= 0)，overfit_verdict = overturn ? \"overfit\" : \"ok\"，如实记录",
-      "input": {
-        "from": [
-          "s002",
-          "s005"
+      "module": "mod-verify",
+      "inputs": {
+        "source": [
+          "generate_02",
+          "generate_05"
         ]
       },
-      "output": {
-        "file": "artifacts/s006_backtest.json",
-        "schema": {
-          "required": [
-            "is_metrics",
-            "oos_metrics",
-            "overturn",
-            "overfit_verdict",
-            "overturn_basis",
-            "baselines",
-            "equity_curve",
-            "per_state_perf",
-            "params"
-          ]
-        }
-      },
-      "depends_on": [
-        "s002",
-        "s005"
-      ],
-      "op_ref": "op-verify",
-      "mind_ref": "mind-default",
       "acceptance_criteria": [
         "is_metrics 含 annualized_return/sharpe/max_drawdown/total_return/n_days，均为有限数值",
         "oos_metrics 含 annualized_return/sharpe/max_drawdown/total_return/n_days，均为有限数值",
@@ -290,44 +159,25 @@
         "artifacts/backtest_adaptive.py 文件存在",
         "artifacts/equity_curve.npz 文件存在且含 equity 与 dates 数组，长度 == is_metrics.n_days + oos_metrics.n_days"
       ],
-      "status": "passed"
+      "status": "pending",
+      "routing": {
+        "pass": "generate_06",
+        "revise": "generate_05"
+      }
     },
     {
-      "id": "s007",
+      "field": "discriminate_02_verdict",
       "name": "独立审计验证（含点对点/全量只读基线/OOS 复现）",
-      "description": "写 artifacts/audit.py：(1) 独立重算 s004 样本内段逐状态 IC（is_per_state_ic，同一数据源、独立实现）并与 s005 路由表核对（非 fallback 状态 top_tree_id 一致、|IC| 绝对差 <= 1e-6 容差）；(2) 重跑 s006 回测脚本（固定 seed）核对 IS/OOS 指标可复现（相对差 <= 1e-9）→ reproducible:{pass, max_rel_diff, re_metrics}；(3) 全量重算 v12 全部 .py/.npz/.md（及 s001 记录的其余文件）的 SHA256 与 s001.v12_checksums 逐一比对 → v12_unchanged:{pass, checked_files, mismatches}；(4) 点对点（point-in-time）审计：读取 s001.alignment（climate_lag >= 0、weather_start_index >= 0、weather_end_index <= panel_length）、s001.pit_sources（字段时间戳键与标签语义）与 s002.lookahead_guard（no_future_ref == true、max_label_offset <= 0），判定 regime 标签与路由 IC 是否使用 t 时刻之后的信息，输出 point_in_time_verdict（bool）+ point_in_time_basis（依据对象）；(5) 逐项核对审计清单：全部关键字段非空、IS/OOS 指标阈值合规、overturn/overfit_verdict 记录诚实；产出审计报告 artifacts/s007_audit.json（每项 check 含 id/description/passed/evidence，必须覆盖 ic_crosscheck / reproducible_oos / v12_unchanged / point_in_time / thresholds_oos / fields_nonempty / overturn_honest）",
-      "input": {
-        "from": [
-          "s001",
-          "s002",
-          "s004",
-          "s005",
-          "s006"
+      "module": "mod-audit",
+      "inputs": {
+        "source": [
+          "generate_01",
+          "generate_02",
+          "generate_04",
+          "generate_05",
+          "discriminate_01_verdict"
         ]
       },
-      "output": {
-        "file": "artifacts/s007_audit.json",
-        "schema": {
-          "required": [
-            "checks",
-            "v12_unchanged",
-            "ic_crosscheck",
-            "reproducible",
-            "point_in_time_verdict",
-            "point_in_time_basis",
-            "summary"
-          ]
-        }
-      },
-      "depends_on": [
-        "s001",
-        "s002",
-        "s004",
-        "s005",
-        "s006"
-      ],
-      "op_ref": "op-audit",
-      "mind_ref": "mind-audit",
       "acceptance_criteria": [
         "checks 数组长度 >= 8，每条含 id/description/passed/evidence 字段",
         "checks 数组含 id ∈ {ic_crosscheck, reproducible_oos, v12_unchanged, point_in_time, thresholds_oos, fields_nonempty, overturn_honest} 的条目",
@@ -343,38 +193,27 @@
         "summary 含 pass 字段且 == true",
         "artifacts/audit.py 文件存在"
       ],
-      "status": "passed"
+      "status": "pending",
+      "routing": {
+        "pass": "generate_06",
+        "revise": "generate_05"
+      }
     },
     {
-      "id": "s008",
+      "field": "generate_06",
       "name": "研究报告物化",
-      "description": "写 artifacts/quant_report.md：综合 s001-s007 全部结果，按固定章节结构（方法/数据探查/信号检验/状态路由/回测结果/样本外验证/结论）撰写独立研究报告；每条结论必须引用证据数字并附产物字段引用（形如 artifacts/s006_backtest.json#oos_metrics.sharpe），禁止主观非证据性表述；含'证据清单'章节（逐条列出产物字段引用）、复现小节（脚本清单与运行顺序）与限制小节",
-      "input": {
-        "from": [
-          "s001",
-          "s002",
-          "s003",
-          "s004",
-          "s005",
-          "s006",
-          "s007"
+      "module": "mod-generate",
+      "inputs": {
+        "source": [
+          "generate_01",
+          "generate_02",
+          "generate_03",
+          "generate_04",
+          "generate_05",
+          "discriminate_01_verdict",
+          "discriminate_02_verdict"
         ]
       },
-      "output": {
-        "file": "artifacts/quant_report.md",
-        "schema": {}
-      },
-      "depends_on": [
-        "s001",
-        "s002",
-        "s003",
-        "s004",
-        "s005",
-        "s006",
-        "s007"
-      ],
-      "op_ref": "op-materialize",
-      "mind_ref": "mind-default",
       "acceptance_criteria": [
         "artifacts/quant_report.md 文件存在",
         "报告含章节标题：方法、数据探查、信号检验、状态路由、回测结果、样本外验证、结论",
@@ -384,7 +223,7 @@
         "报告含'复现'小节且列出至少 3 个 artifacts/ 下脚本文件名",
         "报告含'限制'小节且非空"
       ],
-      "status": "passed"
+      "status": "pending"
     }
   ]
 }

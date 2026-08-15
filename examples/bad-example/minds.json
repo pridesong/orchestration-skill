@@ -3,8 +3,12 @@
     {
       "id": "mind-default",
       "name": "默认执行思维",
+      "type": "constraint",
+      "role": "execute",
+      "forbidden_density": "precise",
       "params": { "mode": "execute" },
-      "apply_to": ["s001", "s002", "s003", "s004"]
+      "forbidden": ["不得编造输入中不存在的事实"],
+      "apply_to": ["generate_01", "generate_02", "generate_03", "generate_04"]
     }
   ]
 }

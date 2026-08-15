@@ -1,20 +1,34 @@
 {
   "minds": [
     {
-      "id": "mind-default",
-      "name": "默认执行思维",
-      "params": { "mode": "execute" },
-      "apply_to": ["s001", "s003"]
+      "id": "mind-query",
+      "name": "查询思维",
+      "type": "constraint",
+      "role": "diagnose",
+      "forbidden_density": "zero",
+      "params": { "mode": "query" },
+      "forbidden": ["禁止凭记忆作答——必须真实检索", "禁止编造不存在的来源"],
+      "apply_to": ["generate_01"]
     },
     {
-      "id": "mind-audit",
-      "name": "工具审计思维",
-      "params": {
-        "mode": "audit",
-        "gate": "I2",
-        "principle": "看起来完美的数字先过工具审计，再当证据"
-      },
-      "apply_to": ["s002"]
+      "id": "mind-reason",
+      "name": "推理思维",
+      "type": "constraint",
+      "role": "architect",
+      "forbidden_density": "precise",
+      "params": { "mode": "reason" },
+      "forbidden": ["禁止跳步——每步推导必须显式", "禁止只给结论不给推导过程"],
+      "apply_to": ["generate_02"]
+    },
+    {
+      "id": "mind-write",
+      "name": "心流构造思维",
+      "type": "constraint",
+      "role": "write",
+      "forbidden_density": "precise",
+      "params": { "mode": "generate" },
+      "forbidden": ["禁止编造输入中不存在的事实", "禁止用散文替代结构化产出"],
+      "apply_to": ["generate_03"]
     }
   ]
 }

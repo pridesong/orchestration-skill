@@ -6,7 +6,12 @@
       "params": {
         "mode": "execute"
       },
-      "apply_to": ["s001", "s002", "s003", "s005"]
+      "apply_to": [
+        "generate_01",
+        "generate_02",
+        "generate_03",
+        "generate_05"
+      ]
     },
     {
       "id": "mind-audit",
@@ -15,7 +20,9 @@
         "mode": "audit",
         "principle": "只以可验证事实为据，每条结论须附来源引用；无法溯源的信息不得进入分析"
       },
-      "apply_to": ["s004"]
+      "apply_to": [
+        "generate_04"
+      ]
     }
   ]
 }

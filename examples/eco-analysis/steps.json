@@ -1,40 +1,29 @@
 {
   "task_id": "eco-test-001",
-  "version": "0.1.0",
-  "steps": [
+  "version": "0.2.0",
+  "created_at": "",
+  "fields": [
     {
-      "id": "s001",
+      "field": "generate_01",
       "name": "检索 dsh-plugin topic 插件清单",
-      "description": "用 gh CLI 检索 GitHub 上标注 dsh-plugin topic 的仓库（gh api search/repositories 或 topic 检索），枚举现有插件并物化为清单，供后续分析复用",
-      "input": {
+      "module": "mod-query",
+      "inputs": {
         "topic": "dsh-plugin",
         "tool": "gh api search/repositories"
       },
-      "output": {
-        "file": "artifacts/s001_plugins.json",
-        "schema": {
-          "required": [
-            "repos",
-            "fetched_at"
-          ]
-        }
-      },
-      "depends_on": [],
-      "op_ref": "op-query",
-      "mind_ref": "mind-default",
       "acceptance_criteria": [
         "repos 数组非空",
         "repos 数组长度 >= 3",
         "每条 repo 含 name 与 url 字段",
         "fetched_at 字段非空"
       ],
-      "status": "passed"
+      "status": "pending"
     },
     {
-      "id": "s002",
+      "field": "generate_02",
       "name": "检索 discussions 反复需求",
-      "description": "用 gh api graphql 检索 deepseek-ai/deepseek-harness 的 discussions，按关键词（memory、插件市场、subagent 卡死等）提取被反复提出的需求话题并物化",
-      "input": {
+      "module": "mod-query",
+      "inputs": {
         "repo": "deepseek-ai/deepseek-harness",
         "keywords": [
           "memory",
@@ -43,84 +32,43 @@
         ],
         "tool": "gh api graphql"
       },
-      "output": {
-        "file": "artifacts/s002_discussions.json",
-        "schema": {
-          "required": [
-            "topics",
-            "fetched_at"
-          ]
-        }
-      },
-      "depends_on": [],
-      "op_ref": "op-query",
-      "mind_ref": "mind-default",
       "acceptance_criteria": [
         "topics 数组非空",
         "topics 数组长度 >= 3",
         "每条 topic 含 keyword 与 evidence_url 字段",
         "fetched_at 字段非空"
       ],
-      "status": "passed"
+      "status": "pending"
     },
     {
-      "id": "s003",
+      "field": "generate_03",
       "name": "检索官方 CONTRIBUTING 立场",
-      "description": "用 gh repo view / gh api 读取 deepseek-ai/deepseek-harness 的 CONTRIBUTING 文档及官方说明，提取对社区插件与 PR 的立场表述并物化",
-      "input": {
+      "module": "mod-query",
+      "inputs": {
         "repo": "deepseek-ai/deepseek-harness",
         "paths": [
           "CONTRIBUTING.md",
           "docs/"
         ]
       },
-      "output": {
-        "file": "artifacts/s003_contributing.json",
-        "schema": {
-          "required": [
-            "statements",
-            "source_url"
-          ]
-        }
-      },
-      "depends_on": [],
-      "op_ref": "op-query",
-      "mind_ref": "mind-default",
       "acceptance_criteria": [
         "statements 数组非空",
         "每条 statement 含 quote 与 source_url 字段",
         "source_url 字段非空"
       ],
-      "status": "passed"
+      "status": "pending"
     },
     {
-      "id": "s004",
+      "field": "generate_04",
       "name": "生态位机会分析",
-      "description": "交叉审计 s001 插件清单、s002 讨论需求、s003 官方立场，产出生态位机会判断（机会点 gap、竞争度、进入成本），每条结论附证据引用",
-      "input": {
-        "from": [
-          "s001",
-          "s002",
-          "s003"
+      "module": "mod-generate",
+      "inputs": {
+        "source": [
+          "generate_01",
+          "generate_02",
+          "generate_03"
         ]
       },
-      "output": {
-        "file": "artifacts/s004_analysis.json",
-        "schema": {
-          "required": [
-            "opportunities",
-            "risks",
-            "conclusion"
-          ]
-        }
-      },
-      "depends_on": [
-        "s001",
-        "s002",
-        "s003"
-      ],
-      "op_ref": "op-generate",
-      "mind_ref": "mind-audit",
       "acceptance_criteria": [
         "opportunities 数组非空",
         "每条 opportunity 含 gap 与 evidence_ref 字段",
@@ -128,30 +76,21 @@
         "每条 risk 含 description 与 evidence_ref 字段",
         "conclusion 字段非空"
       ],
-      "status": "passed"
+      "status": "pending"
     },
     {
-      "id": "s005",
+      "field": "generate_05",
       "name": "物化生态位分析报告",
-      "description": "将 s004 分析结果物化为结构化 Markdown 报告 artifacts/s004_report.md，含生态位机会章节与事实来源链接（交付物）",
-      "input": {
-        "from": "s004"
+      "module": "mod-generate",
+      "inputs": {
+        "source": "generate_04"
       },
-      "output": {
-        "file": "artifacts/s005_report.md",
-        "schema": {}
-      },
-      "depends_on": [
-        "s004"
-      ],
-      "op_ref": "op-materialize",
-      "mind_ref": "mind-default",
       "acceptance_criteria": [
         "artifacts/s005_report.md 文件存在",
         "报告含章节标题'生态位机会'",
         "报告含至少 3 个 https:// 来源链接"
       ],
-      "status": "passed"
+      "status": "pending"
     }
   ]
 }

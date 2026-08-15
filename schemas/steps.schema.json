@@ -1,69 +1,47 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "steps.schema.json",
-  "title": "Steps",
-  "description": "状态层：步骤序列定义。回答'做什么'。",
+  "title": "Assembly Table",
+  "description": "装配表：编排者产出。每行 = 一个字段（generate_N 或 discriminate_N_xxx）+ 选中的模块 + 输入连线 + 判别路由。状态机/协议/依赖全部由字段名 + 模块属性推导，编排者只做装配。",
   "type": "object",
-  "required": ["task_id", "version", "steps"],
+  "required": ["task_id", "version", "fields"],
   "properties": {
     "task_id": { "type": "string", "minLength": 1 },
     "version": { "type": "string" },
     "created_at": { "type": "string" },
-    "steps": {
+    "fields": {
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["id", "name", "output", "depends_on", "op_ref", "acceptance_criteria", "status"],
+        "required": ["field", "module"],
         "properties": {
-          "id": { "type": "string", "pattern": "^s[0-9]{3}$" },
+          "field": {
+            "type": "string",
+            "pattern": "^(generate_[0-9]+|discriminate_[0-9]+_[a-z][a-z0-9_]*)$",
+            "description": "字段名即状态语义：generate_N=生成式产出（落盘即推进）；discriminate_N_xxx=判别式判断项（值决定路由，尾字节定义判断项）"
+          },
           "name": { "type": "string", "minLength": 1 },
-          "description": { "type": "string" },
-          "input": {
+          "module": { "type": "string", "pattern": "^mod-" },
+          "inputs": {
             "type": "object",
-            "description": "步骤输入：字段引用前序步骤产物（如 {\"from\": \"s001\"}）或任务级参数"
+            "description": "输入连线：{参数名: 来源}。来源为 artifacts/ 相对路径或前序字段名（generate_01 等）；依赖由此机械推导"
           },
-          "output": {
+          "routing": {
             "type": "object",
-            "required": ["file"],
-            "properties": {
-              "file": { "type": "string", "description": "产物相对路径，位于任务文件夹内" },
-              "schema": {
-                "type": "object",
-                "description": "产物结构要求（JSON 产物时提供 required 字段列表，供 compare.py 检查）",
-                "properties": {
-                  "required": { "type": "array", "items": { "type": "string" } }
-                }
-              }
-            }
+            "description": "仅 discriminate：判断值 → 目标字段或 stop（覆盖模块默认 routing；模块无 routing 时必填）",
+            "additionalProperties": { "type": "string" }
           },
-          "depends_on": {
-            "type": "array",
-            "items": { "type": "string", "pattern": "^s[0-9]{3}$" },
-            "description": "前置步骤 id 列表，空数组表示无依赖"
-          },
-          "op_ref": { "type": "string", "pattern": "^op-" },
-          "mind_ref": { "type": "string", "pattern": "^mind-" },
+          "mind_ref": { "type": "string", "pattern": "^mind-", "description": "覆盖模块默认 mind" },
           "forbidden": {
             "type": "array",
             "items": { "type": "string", "minLength": 1 },
-            "description": "命题级 forbidden（可选）：覆盖/补充 mind 通用 forbidden。FORBIDDEN 最优粒度是命题级——通用禁令会过度约束（负面心流），本步骤专属的禁令绑定到具体产出/输入。executor.py t3 把它追加进 T3 forbidden。"
-          },
-          "extra_skills": {
-            "type": "array",
-            "items": { "type": "string", "minLength": 1 },
-            "description": "能力插槽（skill）步级补充：本步骤额外需要的 skill（与 op.required_skills 合并，去重）。空数组或缺失 = 无补充。"
-          },
-          "extra_mcp": {
-            "type": "array",
-            "items": { "type": "string", "minLength": 1 },
-            "description": "能力插槽（MCP）步级补充：本步骤额外需要的 MCP 工具/服务（与 op.required_mcp 合并，去重）。空数组或缺失 = 无补充。"
+            "description": "命题级 forbidden：覆盖/补充模块与 mind 的禁令"
           },
           "acceptance_criteria": {
             "type": "array",
-            "minItems": 1,
             "items": { "type": "string" },
-            "description": "验收标准，每条必须可机械检查"
+            "description": "验收标准（追加到模块 verify 之后）"
           },
           "status": {
             "enum": ["pending", "running", "passed", "failed", "skipped", "needs_reorchestration"]
@@ -80,7 +58,7 @@
                   "properties": {
                     "at": { "type": "string" },
                     "reason": { "type": "string" },
-                    "class": { "enum": ["artifact_missing", "field_missing", "acceptance_failed", "prerequisite", "unknown"] }
+                    "class": { "enum": ["artifact_missing", "field_missing", "acceptance_failed", "prerequisite", "routing_invalid", "unknown"] }
                   }
                 }
               }

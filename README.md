@@ -1,8 +1,8 @@
 # orchestration-skill
 
-Long-task orchestration engine for AI agents: reliability comes from a **materialized state machine + mechanical execution + two-layer audit**, not from the model's long-context capability.
+Long-task orchestration engine for AI agents: reliability comes from a **module-assembled state machine + mechanical execution + two-layer audit**, not from the model's long-context capability.
 
-The agent condenses intent → an orchestrator subagent materializes a three-file contract (`steps`/`op-table`/`minds`) → a mechanical executor enforces the state machine → each step is dispatched via the **T3 protocol** (fill/rules/schema/data/write/forbidden, zero lead-in) → every artifact lands on disk (folder = external memory, resumable) → two-layer audit catches drift.
+The agent condenses intent → an orchestrator subagent assembles a field-driven pipeline (`steps.json` assembly table + `minds.json`) by picking modules from a library like building blocks → a mechanical executor drives the field-semantics state machine (`generate_N` produces and advances / `discriminate_N_xxx` judges and routes) → each field is dispatched via the **T3 protocol** (fill/rules/schema/data/write/forbidden, zero lead-in) → every artifact lands on disk (folder = external memory, resumable) → two-layer audit catches drift.
 
 ## Why
 
@@ -12,23 +12,24 @@ Long tasks fail not because the model is weak, but because unreliability compoun
 - the orchestrator's prose instructions get re-interpreted ("protocol wrapped in prose")
 - state lives only in context and is lost on resume
 
-This skill pushes all of it into **structure**: JSON contracts with JSON-Schema constraints, a state machine with hard transition tables, T3 protocol dispatch, and mechanical gates at every boundary. Never fight drift with more prose — fight it with structure.
+This skill pushes all of it into **structure**: JSON contracts with JSON-Schema constraints, a field-semantics state machine, module-derived protocols, T3 dispatch, and mechanical gates at every boundary. Never fight drift with more prose — fight it with structure.
 
 ## Features
 
-- **Three-file contract** — `steps.json` (state layer: what to do), `op-table.json` (primitive layer: how to do it), `minds.json` (cognition layer: which mindset), all schema-constrained under `schemas/`
-- **Mechanical state machine** — `scripts/executor.py`: `ready`/`check`/`retry`/`reset`/`status`. Front gate (dependencies must be passed), back gate (artifacts validated against `output.schema`), illegal transitions rejected by a hard transition table
-- **T3 protocol dispatch** — `executor.py t3` generates the six-piece dispatch (fill/rules/schema/data/write/forbidden) from the contract + dependency artifacts; the only allowed subagent prompt is a zero-lead-in file reference — no prose can wrap the protocol. **Orchestration and orchestration-audit are dispatched the same way** (`templates/orchestrator.t3.json`, `templates/audit.t3.json`)
-- **Capability slots** — ops declare `required_skills`/`required_mcp`, steps add `extra_skills`/`extra_mcp`; the executor injects them into the T3 dispatch so the executing subagent assembles skills/MCP tools directly instead of discovering them
-- **Local capability scan** — `scripts/discover.py` materializes `artifacts/capabilities.json` (MCP servers from the DSH patch layer + skill dirs + runtime supplements); `validate.py` rejects any slot that names a capability absent from this inventory, so the orchestrator can only assemble what this machine really has
+- **Module assembly (building blocks)** — the orchestrator is an assembler, not a protocol designer: pick modules (`mod-generate`/`mod-extract`/`mod-transform`/`mod-query`/`mod-reason`/`mod-fill`/`mod-verify`/`mod-audit`/`mod-classify`) from `modules/`, wire `inputs`, set `routing` on discriminators. Modules carry their own protocol (produce/mind/output_schema/forbidden)
+- **Two-level module model** — level 1 `produce`: `generate` (artifact lands → advance) vs `discriminate` (judgment value → route branch); level 2 `mind`: cognitive parameter sets (write/extract/transform/query/reason/fill/verify/audit/classify) that determine forbidden. Field names encode state semantics: `generate_01`, `discriminate_01_verdict`
+- **Field-semantics state machine** — `scripts/executor.py`: `ready`/`check`/`retry`/`reset`/`status`. Front gate (input dependencies passed), back gate (generate validates output schema / discriminate validates routing membership), discriminator routing turns the machine from linear into branching (pass→next, revise→rework, reject→stop)
+- **T3 protocol dispatch** — `executor.py t3` generates the six-piece dispatch (fill/rules/schema/data/write/forbidden) from module + mind + dependency artifacts; the only allowed subagent prompt is a zero-lead-in file reference — no prose can wrap the protocol. **Orchestration and orchestration-audit are dispatched the same way** (`templates/orchestrator.t3.json`, `templates/audit.t3.json`)
+- **Capability slots** — modules declare `skills`/`mcp`; the executor injects them into the T3 dispatch so the executing subagent assembles skills/MCP tools directly instead of discovering them
+- **Local capability scan** — `scripts/discover.py` materializes `artifacts/capabilities.json` (MCP servers from the DSH patch layer + skill dirs + runtime supplements); `validate.py` rejects any slot that names a capability absent from this inventory
 - **Mind constraints** — `mind-orchestrator` and `mind-orchestration-audit` encode LLM-psychology guards (anchoring / path-locking / sycophancy / confirmation bias) directly into the T3 rules of orchestration and its audit
 - **Mind dual-track injection** — minds are `directive` (crusher-style positive paths for research steps) or `constraint` (FORBIDDEN-style negative guards for everyday tasks): the default assumption is the LLM can produce — the job of constraint minds is to seal off the hallucination slide, not to teach method
-- **Cognitive-mode ratio** — each step needs a different LLM psychological state: `role` (diagnose/scan/architect/write/audit/review) + `forbidden_density` (zero/precise/dense). Diagnose gets zero FORBIDDEN (broad scan), writers get precise proposition-level FORBIDDEN (universal bans cause negative flow), auditors get dense FORBIDDEN + presumed-guilty framing. Step-level `forbidden` arrays bind bans to the concrete proposition
+- **Cognitive-mode ratio** — each step needs a different LLM psychological state: `role` (diagnose/scan/architect/write/audit/review) + `forbidden_density` (zero/precise/dense). Diagnose gets zero FORBIDDEN (broad scan), writers get precise proposition-level FORBIDDEN (universal bans cause negative flow), auditors get dense FORBIDDEN + presumed-guilty framing. Module/mind/field-level `forbidden` arrays bind bans to the concrete proposition
 - **Mind materialization (enforce)** — a mind's `enforce` block (fill/schema/forbidden/check) is merged into the T3 dispatch; `executor.py check` mechanically verifies evidence against its source file. A control experiment showed prose mind instructions produce self-referential path "evidence" (`材料/决策/D1`) and drop existing fields — enforce upgrades minds from prose to protocol
-- **Two-layer audit** — static (multi-agent independent audit of the orchestration) + dynamic (3 same-class failures → `needs_reorchestration`; execution-error vs orchestration-error discrimination)
-- **Failure feedback loop** — failure traces flow back into templates; the engine gets better at orchestrating each task type
-- **Materialized artifacts** — every step writes to the task folder; resume from disk, hand off with zero context loss
-- **Zero dependencies** — pure Python standard library (`json`/`os`/`sys`/`tempfile`/`collections`); runs anywhere Python 3.7+ exists
+- **Two-layer audit** — static (multi-agent independent audit of the assembly) + dynamic (3 same-class failures → `needs_reorchestration`; execution-error vs orchestration-error discrimination)
+- **Failure feedback loop** — failure traces flow back into templates; the engine gets better at assembling each task type
+- **Materialized artifacts** — every field writes `artifacts/<field>.json`; resume from disk, hand off with zero context loss
+- **Zero dependencies** — pure Python standard library; runs anywhere Python 3.7+ exists
 
 ## Quick start
 
@@ -36,27 +37,27 @@ This skill pushes all of it into **structure**: JSON contracts with JSON-Schema 
 # scan local capabilities (MCP servers from DSH patch layer + skill dirs + runtime)
 python scripts/discover.py tasks/demo-task --runtime-skills web-search,lark-doc --runtime-mcp obsidian
 
-# validate a contract (mechanical gate, includes capability-slot authenticity)
+# validate an assembly table (mechanical gate: field names, module refs, routing, acyclicity)
 python scripts/validate.py examples/demo-task
 
 # inspect the state machine
 python scripts/executor.py status examples/demo-task
 
-# list runnable steps (front gate)
+# list runnable fields (front gate)
 python scripts/executor.py ready examples/demo-task
 
-# generate the T3 dispatch for a step
-python scripts/executor.py t3 examples/demo-task s003
+# generate the T3 dispatch for a field (protocol derived from module + mind)
+python scripts/executor.py t3 examples/demo-task generate_01
 ```
 
 ## How it works
 
 1. **Stage 0 — Init**: create `tasks/<task_id>/{artifacts,feedback}`; run `scripts/discover.py` to materialize `artifacts/capabilities.json` (the local capability inventory); condense the user intent into `data` (schema-constrained).
-2. **Stage 0.5 — Orchestrate**: dispatch an orchestrator subagent with `templates/orchestrator.t3.json` (data filled in, capabilities referenced). The orchestrator works under `mind-orchestrator` (anti-anchoring / anti-path-locking). It writes the three-file contract.
-3. **Stage 1 — Static audit**: `validate.py` (mechanical, incl. capability-slot authenticity) + independent multi-agent audit dispatched via `templates/audit.t3.json` under `mind-orchestration-audit` (anti-confirmation-bias / anti-sycophancy); each route writes `artifacts/audit_<route>.json`. Fail → regenerate.
-4. **Stage 2 — Execute**: `ready` lists runnable steps (front gate) → `t3` generates the T3 dispatch → the subagent executes with a zero-lead-in prompt → `check` validates the artifact (back gate).
+2. **Stage 0.5 — Orchestrate (assemble)**: dispatch an orchestrator subagent with `templates/orchestrator.t3.json` (data filled in, modules_ref + capabilities referenced). The orchestrator works under `mind-orchestrator` (anti-anchoring / anti-path-locking) and produces the assembly table: field sequence (`generate_N` / `discriminate_N_xxx`), module picks, `inputs` wiring, `routing` on discriminators.
+3. **Stage 1 — Static audit**: `validate.py` (mechanical: field-name regex, module refs, routing legality, acyclic deps) + independent multi-agent audit dispatched via `templates/audit.t3.json` under `mind-orchestration-audit` (anti-confirmation-bias / anti-sycophancy); each route writes `artifacts/audit_<route>.json`. Fail → regenerate.
+4. **Stage 2 — Execute**: `ready` lists runnable fields (front gate) → `t3` generates the T3 dispatch from module + mind + dependency artifacts → the subagent executes with a zero-lead-in prompt → `check` validates (generate: output schema; discriminate: judgment ∈ routing keys) and advances/routes.
 5. **Stage 3 — Dynamic audit**: 3 same-class failures → `needs_reorchestration`; discriminate execution errors (retry) from orchestration errors (re-orchestrate).
-6. **Stage 4 — Wrap**: `compare.py` full verification; archive the contract to `templates/` or `examples/`.
+6. **Stage 4 — Wrap**: `compare.py` full verification; archive the assembly to `templates/` or `examples/`.
 
 ## Usage as a DeepSeek Harness skill
 
@@ -66,9 +67,10 @@ python scripts/executor.py t3 examples/demo-task s003
 
 ```
 SKILL.md            # the protocol (schema-driven contract shape)
-schemas/            # JSON Schemas for the three-file contract
+schemas/            # JSON Schemas (steps assembly / modules / minds)
+modules/            # the module library (produce + mind + output_schema + forbidden)
 scripts/            # discover.py / validate.py / executor.py / compare.py (pure stdlib)
-templates/          # contract templates + orchestrator T3 + audit T3
+templates/          # assembly templates + orchestrator T3 + audit T3
 examples/           # demo-task (happy path), bad-example (negative), eco-analysis (research task)
 tasks/              # runtime artifacts (gitignored)
 ```

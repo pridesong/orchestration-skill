@@ -1,89 +1,31 @@
 {
   "task_id": "demo-001",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "created_at": "2026-08-14T00:00:00Z",
-  "steps": [
+  "fields": [
     {
-      "id": "s001",
+      "field": "generate_01",
       "name": "收集资料",
-      "description": "检索主题相关资料并物化为 JSON 列表",
-      "input": {
-        "topic": "示例主题"
-      },
-      "output": {
-        "file": "artifacts/s001_data.json",
-        "schema": {
-          "required": [
-            "items"
-          ]
-        }
-      },
-      "depends_on": [],
-      "op_ref": "op-query",
-      "mind_ref": "mind-default",
-      "acceptance_criteria": [
-        "items 非空",
-        "每条含 source 字段"
-      ],
-      "status": "passed"
+      "module": "mod-query",
+      "inputs": { "topic": "示例主题" },
+      "acceptance_criteria": ["items 非空", "每条含 source 字段"],
+      "status": "pending"
     },
     {
-      "id": "s002",
+      "field": "generate_02",
       "name": "分析",
-      "description": "对收集的资料做分析，产出结论",
-      "input": {
-        "from": "s001"
-      },
-      "output": {
-        "file": "artifacts/s002_analysis.json",
-        "schema": {
-          "required": [
-            "findings"
-          ]
-        }
-      },
-      "depends_on": [
-        "s001"
-      ],
-      "op_ref": "op-generate",
-      "mind_ref": "mind-audit",
-      "acceptance_criteria": [
-        "findings 非空",
-        "每条 finding 附证据引用"
-      ],
-      "status": "passed",
-      "runtime": {
-        "failures": 1,
-        "failure_log": [
-          {
-            "at": "产物 artifacts/s002_analysis.json 缺少字段 findings",
-            "reason": "产物 artifacts/s002_analysis.json 缺少字段 findings",
-            "class": "artifact_missing"
-          }
-        ]
-      }
+      "module": "mod-reason",
+      "inputs": { "source": "generate_01" },
+      "acceptance_criteria": ["findings 非空", "每条 finding 附证据引用"],
+      "status": "pending"
     },
     {
-      "id": "s003",
+      "field": "generate_03",
       "name": "生成报告",
-      "description": "汇总分析产出报告",
-      "input": {
-        "from": "s002"
-      },
-      "output": {
-        "file": "artifacts/s003_report.md",
-        "schema": {}
-      },
-      "depends_on": [
-        "s002"
-      ],
-      "op_ref": "op-materialize",
-      "mind_ref": "mind-default",
-      "acceptance_criteria": [
-        "报告文件存在",
-        "含结论章节"
-      ],
-      "status": "passed"
+      "module": "mod-generate",
+      "inputs": { "source": "generate_02" },
+      "acceptance_criteria": ["报告文件存在", "含结论章节"],
+      "status": "pending"
     }
   ]
 }
