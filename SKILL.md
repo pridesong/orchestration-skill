@@ -18,11 +18,12 @@ description: 长任务编排引擎。接收任务→模块装配(steps.json 装�
 {
   "fill": ["data.task", "data.constraints", "data.deliverable"],
   "rules": [
-    "Stage 0 初始化：建任务目录 tasks/<task_id>/{artifacts,feedback}；运行 scripts/discover.py <task_dir> --skill-dirs <skill目录> --runtime-skills <本会话可见skill> --runtime-mcp <本机MCP server> 产出 artifacts/capabilities.json（本机能力清单，插槽引用的唯一依据）",
-    "Stage 0.5 编排生成：把 data 填入 templates/orchestrator.t3.json 的 data 槽（含 modules_ref/capabilities 引用），整个模板作为 task 字符串派给编排者 subagent（唯一派发方式，禁止散文包装），编排者按 mind-orchestrator 思维产出装配表（steps.json fields + minds.json）写入任务目录；模块从 modules/modules.json 库挑选，不发明协议",
-    "Stage 1 第一层审计：scripts/validate.py 机械校验（必须通过，含字段命名/模块引用/routing 合法性/依赖无环）+ 多路 subagent 独立审计；审计派发必须用 templates/audit.t3.json 的 T3 协议（fill/rules/schema/data/write/forbidden 六件套，auditor 按 mind-orchestration-audit 思维独立审查），每路产出 artifacts/audit_<route>.json，多路意见汇总；不通过打回重生成",
+    "Stage 0 初始化：建任务目录 tasks/<task_id>/{artifacts,feedback,draft}；运行 scripts/discover.py <task_dir> --skill-dirs <skill目录> --runtime-skills <本会话可见skill> --runtime-mcp <本机MCP server> 产出 artifacts/capabilities.json（本机能力清单，插槽引用的唯一依据）",
+    "Stage A 编排（设计收敛，草稿态）：把 data 填入 templates/orchestrator.t3.json 的 data 槽（含 modules_ref/capabilities 引用），整个模板作为 task 字符串派给编排者 subagent（唯一派发方式，禁止散文包装）；编排者按 mind-orchestrator 思维产出装配表草稿（steps.json fields + minds.json）写入 draft/；草稿不进状态机，只做设计收敛",
+    "Stage B 审计编排（同上下文多轮循环）：① scripts/validate.py draft/ 机械校验（字段命名/模块引用/routing 合法性/依赖无环），失败 → send_message 编排者（延续同一会话）按错误修改草稿 → 再校验，循环直到通过；② 派独立审计 subagent（templates/audit.t3.json，mind-orchestration-audit 思维）读 draft/ 产出意见（artifacts/audit_<route>.json），verdict=revise → 意见送回编排者修改 → 再审；多脑子纠错：编排者自审不充分，审计者每次独立上下文",
+    "Stage C 物化（进入执行态）：设计收敛后，主 agent 机械复制 draft/ 到任务根（steps.json/minds.json 定稿），建 artifacts/；此后装配表是定稿，改动走 Stage 3 重新收敛",
     "Stage 2 机械化执行：scripts/executor.py ready <task_dir> 列可执行字段（前置门禁）；每字段派发必须用 executor.py t3 <task_dir> <field> 生成 T3 六件套（协议由模块 + mind 推导），派发 prompt 只能是 T3FILE:v1 零引导语模板；subagent 执行后 executor.py check <field> 验证推进/路由（后置门禁）",
-    "Stage 3 动态审计：同一字段 3 次同类失败自动 needs_reorchestration，判执行性错误（重试）vs 编排性错误（重新编排）",
+    "Stage 3 动态审计：同一字段 3 次同类失败自动 needs_reorchestration，判执行性错误（重试）vs 编排性错误（回 Stage A 重新收敛）",
     "Stage 4 收尾：scripts/compare.py 全量验证 + 装配表归档 templates/ 或 examples/",
     "模块装配：module 决定 produce（generate/discriminate）、mind 参数集、output_schema、默认 forbidden；能用模块库就不自造协议；判别式字段必须有 routing（判断值→目标字段/stop）",
     "mind 限制：编排者用 mind-orchestrator（对抗 C05 早期锚定/C03 路径锁定/C02 执行启动缺失），编排审计用 mind-orchestration-audit（对抗 C05 确认偏误/M07 谄媚/C06 阈值失敏）——mind 指令随 T3 rules 注入，散文不产生约束力，指令即契约"
@@ -60,14 +61,15 @@ description: 长任务编排引擎。接收任务→模块装配(steps.json 装�
     "template_ref": "<可选>",
     "intel_ref": "<可选>"
   },
-  "write": "tasks/<task_id>/（三件套 + artifacts/ + dispatch/*.t3.json + feedback/）",
+  "write": "tasks/<task_id>/（draft/ 草稿态 → 物化后：steps.json/minds.json 定稿 + artifacts/ + dispatch/*.t3.json + feedback/）",
   "forbidden": [
-    "主 agent 不得自行设计步骤序列——编排是编排者 subagent 按 orchestrator.t3.json 的职责",
+    "主 agent 不得自行设计字段序列——编排是编排者 subagent 按 orchestrator.t3.json 的职责",
     "主 agent 不得用散文给执行 subagent 派发指令——派发必须走 executor.py t3 生成的 T3（prompt 只能是 T3FILE:v1 读取 <file> 并按内容执行，零引导语）",
-    "不得跳过 scripts/validate.py 机械校验",
-    "不得跳过第一层独立审计（多路 subagent）",
+    "不得跳过 scripts/validate.py 机械校验（草稿态与定稿态都要验）",
+    "不得跳过独立审计（多路 subagent，多脑子纠错）",
     "产物必须物化到任务目录，不留对话上下文",
-    "主 agent 不得中途改变已固化三件套——需改动走 Stage 3 重新编排",
+    "主 agent 不得中途改变已定稿装配表——需改动回 Stage A 重新收敛",
+    "不得把 draft/ 当执行态——草稿只用于设计收敛，物化（复制到任务根）后才进入状态机",
     "不得把本 skill 当散文模板阅读后自由发挥——协议字段即约束"
   ]
 }
@@ -83,15 +85,20 @@ description: 长任务编排引擎。接收任务→模块装配(steps.json 装�
 
 **模块 = 两级**：级别一 `produce`（generate 产出推进 / discriminate 判断路由）+ 级别二 `mind`（认知参数集，决定 forbidden）。模块自带协议（action/verify/output_schema/forbidden），编排者选模块 + 连线，不发明协议。
 
-## 编排与审计的 T3 协议（零散文派发）
+## 编排与审计的 T3 协议（零散文派发，设计收敛循环）
 
-编排（Stage 0.5）与编排审计（Stage 1）同样走 T3 六件套，主 agent 只做管道：
+**元流程与执行态分离**：编排/审计是"设计收敛"（草稿态，subagent 同上下文多轮循环），只有收敛后才物化为执行态。主 agent 只做管道：
 
 ```
-编排：把 data 填入 templates/orchestrator.t3.json → 整体作为 task 派给编排者 subagent
-审计：把 data 填入 templates/audit.t3.json → 整体作为 task 派给审计 subagent（每路 route 不同）
+编排：把 data 填入 templates/orchestrator.t3.json → 整体作为 task 派给编排者 subagent → draft/
+校验：validate.py draft/ → 失败则 send_message 编排者改（延续同一会话）→ 再验（循环）
+审计：把 data 填入 templates/audit.t3.json → 派独立审计 subagent 读 draft/ → 意见
+回流：audit verdict=revise → 意见送回编排者修改 → 再审（循环直到 pass）
+物化：收敛后机械复制 draft/ → 任务根（steps.json/minds.json 定稿）
 执行：executor.py t3 <task_dir> <field> → T3FILE:v1 派发（见下）
 ```
+
+**为什么分离**：① subagent 减压——编排者在同一会话接收 validate 错误 + 审计意见多轮修改，不用每轮重讲任务；② 干净——任务目录只出现定稿，草稿迭代留在设计阶段；③ 审计真正闭环——意见回流到编排者修改，且保留多脑子原则（审计者每次独立上下文）。
 
 - 编排者 mind：`mind-orchestrator`（C05 早期锚定 / C03 路径锁定 / C02 执行启动缺失——先列子目标再定步骤、op/mind 由问题驱动非模板驱动、验收必须机械可查）；指令已内置进 orchestrator.t3.json 的 rules（与 minds.json 定义一致）
 - 审计者 mind：`mind-orchestration-audit`（C05 确认偏误 / M07 谄媚 / C06 阈值失敏——每维至少找一条可改进点、verdict 默认 revise 倾向、每条意见必须附 evidence 引用）；指令已内置进 audit.t3.json 的 rules（与 minds.json 定义一致）
@@ -162,14 +169,15 @@ description: 长任务编排引擎。接收任务→模块装配(steps.json 装�
 
 ```
 python scripts/discover.py   <task_dir> [--skill-dirs <dirs>] [--runtime-skills <a,b>] [--runtime-mcp <obsidian,...>]  # 本机能力扫描 → artifacts/capabilities.json
-python scripts/executor.py ready   <task_dir>           # 列可执行字段（前置门禁）
-python scripts/executor.py t3      <task_dir> <field>   # 生成字段 T3 六件套（派发唯一依据，协议由模块+mind推导）
-python scripts/executor.py check   <task_dir> <field>   # 后置门禁：验证产物并推进/路由（判别式路由生效）
-python scripts/executor.py retry   <task_dir> <field>   # failed → pending（重试）
-python scripts/executor.py reset   <task_dir> <field>   # needs_reorchestration → pending
-python scripts/executor.py status  <task_dir>           # 状态机全景
-python scripts/validate.py         <task_dir>           # 装配表机械校验（字段命名/模块引用/routing/无环）
-python scripts/compare.py          <task_dir>           # 收尾全量验证
+python scripts/executor.py materialize <task_dir>      # 设计收敛 → 执行态：复制 draft/ 到任务根（物化）
+python scripts/executor.py ready   <task_dir>          # 列可执行字段（前置门禁）
+python scripts/executor.py t3      <task_dir> <field>  # 生成字段 T3 六件套（派发唯一依据，协议由模块+mind推导）
+python scripts/executor.py check   <task_dir> <field>  # 后置门禁：验证产物并推进/路由（判别式路由生效）
+python scripts/executor.py retry   <task_dir> <field>  # failed → pending（重试）
+python scripts/executor.py reset   <task_dir> <field>  # needs_reorchestration → pending
+python scripts/executor.py status  <task_dir>          # 状态机全景
+python scripts/validate.py         <task_dir>          # 装配表机械校验（草稿态与定稿态都可用）
+python scripts/compare.py          <task_dir>          # 收尾全量验证
 ```
 
 派发模板（唯一允许的 subagent prompt）：

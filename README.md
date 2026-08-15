@@ -52,12 +52,15 @@ python scripts/executor.py t3 examples/demo-task generate_01
 
 ## How it works
 
-1. **Stage 0 — Init**: create `tasks/<task_id>/{artifacts,feedback}`; run `scripts/discover.py` to materialize `artifacts/capabilities.json` (the local capability inventory); condense the user intent into `data` (schema-constrained).
-2. **Stage 0.5 — Orchestrate (assemble)**: dispatch an orchestrator subagent with `templates/orchestrator.t3.json` (data filled in, modules_ref + capabilities referenced). The orchestrator works under `mind-orchestrator` (anti-anchoring / anti-path-locking) and produces the assembly table: field sequence (`generate_N` / `discriminate_N_xxx`), module picks, `inputs` wiring, `routing` on discriminators.
-3. **Stage 1 — Static audit**: `validate.py` (mechanical: field-name regex, module refs, routing legality, acyclic deps) + independent multi-agent audit dispatched via `templates/audit.t3.json` under `mind-orchestration-audit` (anti-confirmation-bias / anti-sycophancy); each route writes `artifacts/audit_<route>.json`. Fail → regenerate.
-4. **Stage 2 — Execute**: `ready` lists runnable fields (front gate) → `t3` generates the T3 dispatch from module + mind + dependency artifacts → the subagent executes with a zero-lead-in prompt → `check` validates (generate: output schema; discriminate: judgment ∈ routing keys) and advances/routes.
-5. **Stage 3 — Dynamic audit**: 3 same-class failures → `needs_reorchestration`; discriminate execution errors (retry) from orchestration errors (re-orchestrate).
-6. **Stage 4 — Wrap**: `compare.py` full verification; archive the assembly to `templates/` or `examples/`.
+The skill's meta-state-machine (design convergence) is separated from the task's state machine (execution):
+
+1. **Stage 0 — Init**: create `tasks/<task_id>/{artifacts,feedback,draft}`; run `scripts/discover.py` to materialize `artifacts/capabilities.json` (the local capability inventory); condense the user intent into `data` (schema-constrained).
+2. **Stage A — Orchestrate (design convergence, draft state)**: dispatch an orchestrator subagent with `templates/orchestrator.t3.json` (data filled in, modules_ref + capabilities referenced). The orchestrator works under `mind-orchestrator` (anti-anchoring / anti-path-locking) and produces the assembly draft in `draft/`: field sequence (`generate_N` / `discriminate_N_xxx`), module picks, `inputs` wiring, `routing` on discriminators.
+3. **Stage B — Audit orchestration (same-context multi-round loop)**: `validate.py draft/` (mechanical: field-name regex, module refs, routing legality, acyclic deps) — on failure `send_message` the orchestrator (same session) to fix; then an independent audit subagent reads `draft/` via `templates/audit.t3.json` under `mind-orchestration-audit` (anti-confirmation-bias / anti-sycophancy); revise opinions flow back to the orchestrator for another round. Loop until validate passes + audit passes. Separate brains: the auditor stays independent each round.
+4. **Stage C — Materialize (enter execution state)**: on convergence the main agent mechanically copies `draft/` to the task root (`executor.py materialize`) — the assembly is now frozen; later changes return to Stage A.
+5. **Stage 2 — Execute**: `ready` lists runnable fields (front gate) → `t3` generates the T3 dispatch from module + mind + dependency artifacts → the subagent executes with a zero-lead-in prompt → `check` validates (generate: output schema; discriminate: judgment ∈ routing keys) and advances/routes.
+6. **Stage 3 — Dynamic audit**: 3 same-class failures → `needs_reorchestration`; discriminate execution errors (retry) from orchestration errors (return to Stage A).
+7. **Stage 4 — Wrap**: `compare.py` full verification; archive the assembly to `templates/` or `examples/`.
 
 ## Usage as a DeepSeek Harness skill
 

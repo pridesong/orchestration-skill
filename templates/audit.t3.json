@@ -57,18 +57,18 @@
   "data": {
     "task_dir": "<task_dir>",
     "capabilities": "<task_dir>/artifacts/capabilities.json（本机能力清单，不存在时插槽引用视为空）",
-    "three_piece": {
-      "steps.json": "<task_dir>/steps.json",
-      "op-table.json": "<task_dir>/op-table.json",
-      "minds.json": "<task_dir>/minds.json"
+    "assembly_draft": {
+      "steps.json": "<task_dir>/draft/steps.json（设计收敛态，审计对象）",
+      "minds.json": "<task_dir>/draft/minds.json"
     }
   },
   "write": "<task_dir>/artifacts/audit_<route>.json",
   "forbidden": [
     "不得替编排者辩护或美化——你是独立审计员，倾向挑错而非放行",
-    "不得输出无 evidence 的意见——每条 issue 必须引用三件套真实条目",
+    "不得输出无 evidence 的意见——每条 issue 必须引用 draft 装配表真实条目（字段/模块/routing）",
     "不得把粒度偏好当作缺陷（过粗/过细须结合错误传播半径论证）",
     "不得编造 capabilities.json 中不存在的能力作为插槽建议",
+    "不得修改 draft/ 下的文件——你只审不改，修改由编排者按你的意见完成",
     "响应正文只允许输出产物内容，禁止散文、解释、思考过程"
   ]
 }

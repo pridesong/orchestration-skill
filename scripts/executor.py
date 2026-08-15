@@ -16,12 +16,13 @@ executor.py — 字段语义状态机执行器（机械化执行的强制者）
   7. mind 具象化：mind 的 enforce 四层 + module 协议合并进 T3 派发；check 机械执行证据门禁
 
 命令：
-  python executor.py status <task_dir>            # 显示状态机全景
-  python executor.py ready <task_dir>             # 列出可执行字段（前置满足 + pending）
-  python executor.py t3      <task_dir> <field>   # 生成字段 T3 六件套（派发唯一依据）
-  python executor.py check   <task_dir> <field>   # 后置门禁：验证产物并推进/路由
-  python executor.py retry   <task_dir> <field>   # failed → pending（重试）
-  python executor.py reset   <task_dir> <field>   # needs_reorchestration → pending
+  python executor.py materialize <task_dir>      # 设计收敛 → 执行态：复制 draft/ 到任务根
+  python executor.py status <task_dir>           # 显示状态机全景
+  python executor.py ready <task_dir>            # 列出可执行字段（前置满足 + pending）
+  python executor.py t3      <task_dir> <field>  # 生成字段 T3 六件套（派发唯一依据）
+  python executor.py check   <task_dir> <field>  # 后置门禁：验证产物并推进/路由
+  python executor.py retry   <task_dir> <field>  # failed → pending（重试）
+  python executor.py reset   <task_dir> <field>  # needs_reorchestration → pending
 
 退出码：0=正常, 1=检查失败/非法操作, 2=用法错误
 """
@@ -280,6 +281,28 @@ def load_minds(task_dir):
 
 
 # ---------- 命令实现 ----------
+
+def cmd_materialize(task_dir):
+    """设计收敛 → 执行态：复制 draft/steps.json + draft/minds.json 到任务根。
+
+    物化后装配表是定稿，executor 读任务根的 steps.json。draft/ 保留作设计痕迹。
+    """
+    draft_steps = os.path.join(task_dir, "draft", "steps.json")
+    draft_minds = os.path.join(task_dir, "draft", "minds.json")
+    if not os.path.exists(draft_steps):
+        sys.exit(f"缺少 {draft_steps}（先完成设计收敛：编排 + 校验 + 审计通过）")
+    for name in ("steps.json", "minds.json"):
+        src = os.path.join(task_dir, "draft", name)
+        dst = os.path.join(task_dir, name)
+        if os.path.exists(src):
+            with open(src, "r", encoding="utf-8-sig") as f:
+                content = f.read()
+            with open(dst, "w", encoding="utf-8") as f:
+                f.write(content)
+            print(f"物化: draft/{name} → {name}")
+    os.makedirs(os.path.join(task_dir, "artifacts"), exist_ok=True)
+    return 0
+
 
 def cmd_status(task_dir):
     data = load_steps(task_dir)
@@ -590,6 +613,8 @@ def main():
         if len(sys.argv) < 4:
             sys.exit("用法: executor.py reset <task_dir> <field>")
         cmd_reset(task_dir, sys.argv[3])
+    elif cmd == "materialize":
+        sys.exit(cmd_materialize(task_dir))
     else:
         print(__doc__)
         sys.exit(2)

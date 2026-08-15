@@ -52,12 +52,15 @@ python scripts/executor.py t3 examples/demo-task generate_01
 
 ## 工作流程
 
-1. **Stage 0 初始化**：建 `tasks/<task_id>/{artifacts,feedback}`；运行 `scripts/discover.py` 物化 `artifacts/capabilities.json`（本机能力清单）；把用户意图浓缩进 `data`（schema 约束）。
-2. **Stage 0.5 编排生成（装配）**：以 `templates/orchestrator.t3.json`（填入 data、引用 modules_ref/capabilities）派发编排者 subagent；编排者按 `mind-orchestrator`（防早期锚定/防路径锁定）产出装配表——字段序列（`generate_N`/`discriminate_N_xxx`）、模块选择、inputs 连线、判别式 routing。
-3. **Stage 1 静态审计**：`validate.py`（机械：字段命名/模块引用/routing 合法性/依赖无环）+ 多路 subagent 独立审计——经 `templates/audit.t3.json` 按 `mind-orchestration-audit`（防确认偏误/防谄媚）派发，每路产出 `artifacts/audit_<route>.json`。不过打回重生成。
-4. **Stage 2 执行**：`ready` 列可执行字段（前置门禁）→ `t3` 从模块+mind+依赖产物生成 T3 派发 → subagent 零引导语执行 → `check` 验证推进/路由（generate 验 schema / discriminate 验判断值）。
-5. **Stage 3 动态审计**：3 次同类失败 → `needs_reorchestration`；判别执行性错误（重试）与编排性错误（重新编排）。
-6. **Stage 4 收尾**：`compare.py` 全量验证；装配表归档到 `templates/` 或 `examples/`。
+**skill 元状态机（设计收敛）与任务状态机（执行）分离**：
+
+1. **Stage 0 初始化**：建 `tasks/<task_id>/{artifacts,feedback,draft}`；运行 `scripts/discover.py` 物化 `artifacts/capabilities.json`（本机能力清单）；把用户意图浓缩进 `data`（schema 约束）。
+2. **Stage A 编排（设计收敛，草稿态）**：以 `templates/orchestrator.t3.json`（填入 data、引用 modules_ref/capabilities）派发编排者 subagent；编排者按 `mind-orchestrator`（防早期锚定/防路径锁定）产出装配表草稿到 `draft/`——字段序列（`generate_N`/`discriminate_N_xxx`）、模块选择、inputs 连线、判别式 routing。
+3. **Stage B 审计编排（同上下文多轮循环）**：`validate.py draft/`（机械：字段命名/模块引用/routing 合法性/依赖无环），失败 → `send_message` 编排者（延续同一会话）修改；再派独立审计 subagent 经 `templates/audit.t3.json` 按 `mind-orchestration-audit`（防确认偏误/防谄媚）读 `draft/` 产出意见，revise → 意见回流编排者再改。循环直到校验通过 + 审计 pass。多脑子纠错：审计者每次独立上下文。
+4. **Stage C 物化（进入执行态）**：收敛后主 agent 机械复制 `draft/` 到任务根（`executor.py materialize`）——装配表定稿；此后改动回 Stage A。
+5. **Stage 2 执行**：`ready` 列可执行字段（前置门禁）→ `t3` 从模块+mind+依赖产物生成 T3 派发 → subagent 零引导语执行 → `check` 验证推进/路由（generate 验 schema / discriminate 验判断值）。
+6. **Stage 3 动态审计**：3 次同类失败 → `needs_reorchestration`；判别执行性错误（重试）与编排性错误（回 Stage A）。
+7. **Stage 4 收尾**：`compare.py` 全量验证；装配表归档到 `templates/` 或 `examples/`。
 
 ## 作为 DeepSeek Harness skill 使用
 
