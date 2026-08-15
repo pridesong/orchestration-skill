@@ -26,6 +26,7 @@ executor.py — 字段语义状态机执行器（机械化执行的强制者）
 
 退出码：0=正常, 1=检查失败/非法操作, 2=用法错误
 """
+import csv
 import json
 import os
 import re
@@ -51,7 +52,12 @@ MAX_FAILURES = 3
 
 STEP_FILE = "steps.json"
 MODULES_FILE = "modules.json"
+STATE_FILE = "state.csv"
+OP_TABLE_FILE = "op-table.json"
 MODULES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "modules")
+
+# state.csv 列（追加行，最后一行=当前状态；判断字段留空=generate）
+STATE_COLS = ["field", "produce", "status", "judgment", "module", "routing_target", "ts"]
 
 
 # ---------- 文件 IO ----------
@@ -101,6 +107,54 @@ def get_field(fields, fid):
     return None
 
 
+# ---------- state.csv（追加行状态真相源，最后一行=当前状态） ----------
+
+def load_state(task_dir):
+    """读 state.csv → {field: {status, judgment, module, routing_target, ts}}（每字段最新行）。"""
+    path = os.path.join(task_dir, STATE_FILE)
+    if not os.path.exists(path):
+        return {}
+    state = {}
+    try:
+        with open(path, "r", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                fid = row.get("field")
+                if not fid:
+                    continue
+                state[fid] = {
+                    "status": row.get("status", ""),
+                    "judgment": row.get("judgment", ""),
+                    "module": row.get("module", ""),
+                    "routing_target": row.get("routing_target", ""),
+                    "ts": row.get("ts", ""),
+                }
+    except (csv.Error, OSError) as e:
+        sys.exit(f"state.csv 读取失败: {e}")
+    return state
+
+
+def append_state(task_dir, field, produce, status, judgment="", module="", routing_target=""):
+    """追加一行 state.csv。文件不存在时写表头。"""
+    path = os.path.join(task_dir, STATE_FILE)
+    import datetime
+    ts = datetime.datetime.now().isoformat(timespec="seconds")
+    is_new = not os.path.exists(path)
+    with open(path, "a", encoding="utf-8", newline="") as f:
+        writer = csv.writer(f)
+        if is_new:
+            writer.writerow(STATE_COLS)
+        writer.writerow([field, produce, status, judgment, module, routing_target, ts])
+
+
+def state_status(task_dir, fid):
+    return load_state(task_dir).get(fid, {}).get("status")
+
+
+def state_judgment(task_dir, fid):
+    return load_state(task_dir).get(fid, {}).get("judgment")
+
+
 def field_status(fields, fid):
     f = get_field(fields, fid)
     return f["status"] if f else None
@@ -115,16 +169,6 @@ def field_produce(fid):
     return None
 
 
-def transition(fields, fid, new_status):
-    f = get_field(fields, fid)
-    if f is None:
-        sys.exit(f"字段不存在: {fid}")
-    cur = f["status"]
-    if new_status not in VALID_TRANSITIONS.get(cur, []):
-        sys.exit(f"非法转移: {fid} {cur} → {new_status}（转移表不允许）")
-    f["status"] = new_status
-
-
 def record_failure(f, reason, cls):
     rt = f.setdefault("runtime", {})
     rt["failures"] = rt.get("failures", 0) + 1
@@ -132,7 +176,7 @@ def record_failure(f, reason, cls):
     log.append({"at": reason, "reason": reason, "class": cls})
 
 
-# ---------- 依赖推导（inputs 连线 + 判别路由） ----------
+# ---------- 依赖推导（inputs 连线 + 判别路由，状态来自 state.csv） ----------
 
 def field_inputs(field):
     """字段依赖：inputs 连线中的前序字段名 + 模块 input_schema 引用的来源。"""
@@ -153,12 +197,12 @@ def routing_targets(field):
     return targets
 
 
-def prerequisites_met(fields, field):
+def prerequisites_met(fields, state, field):
     deps = field_inputs(field)
     for dep in deps:
-        st = field_status(fields, dep)
+        st = state.get(dep, {}).get("status")
         if st is None:
-            return False, f"依赖字段 {dep} 不存在"
+            return False, f"依赖字段 {dep} 无状态记录（未执行）"
         if st != "passed":
             return False, f"依赖字段 {dep} 状态为 {st}（须 passed）"
     return True, ""
@@ -282,8 +326,40 @@ def load_minds(task_dir):
 
 # ---------- 命令实现 ----------
 
+def generate_op_table(fields, modules):
+    """从装配表推导 op-table.json（条件路由表）。
+
+    规则：
+      generate 字段 → {"condition": "<field>=passed", "dispatch": "<下一个依赖该字段的字段>"}
+      discriminate 字段 → {"condition": "<field>=<verdict>", "dispatch": "<routing 目标>"}
+    供审计/可视化；executor 运行时仍直接读装配表 routing（op-table 是派生物）。
+    """
+    operations = []
+    field_ids = [f["field"] for f in fields]
+    for f in fields:
+        fid = f["field"]
+        produce = field_produce(fid)
+        module = modules.get(f["module"], {})
+        if produce == "generate":
+            operations.append({
+                "condition": f"{fid}=passed",
+                "dispatch": "next",
+                "side_effect": None,
+            })
+        elif produce == "discriminate":
+            routing = f.get("routing") or module.get("routing") or {}
+            for verdict, target in routing.items():
+                operations.append({
+                    "condition": f"{fid}={verdict}",
+                    "dispatch": target,
+                    "side_effect": "reset" if target != "stop" and target in field_ids else None,
+                })
+    return operations
+
+
 def cmd_materialize(task_dir):
-    """设计收敛 → 执行态：复制 draft/steps.json + draft/minds.json 到任务根。
+    """设计收敛 → 执行态：复制 draft/steps.json + draft/minds.json 到任务根，
+    并从装配表生成 op-table.json（条件路由表派生物）。
 
     物化后装配表是定稿，executor 读任务根的 steps.json。draft/ 保留作设计痕迹。
     """
@@ -300,6 +376,14 @@ def cmd_materialize(task_dir):
             with open(dst, "w", encoding="utf-8") as f:
                 f.write(content)
             print(f"物化: draft/{name} → {name}")
+    # 生成 op-table.json（路由层派生物）
+    data = load_steps(task_dir)
+    modules = load_modules(task_dir)
+    operations = generate_op_table(data["fields"], modules)
+    op_path = os.path.join(task_dir, OP_TABLE_FILE)
+    with open(op_path, "w", encoding="utf-8") as f:
+        json.dump({"operations": operations}, f, ensure_ascii=False, indent=2)
+    print(f"生成: {OP_TABLE_FILE}（{len(operations)} 条路由条件）")
     os.makedirs(os.path.join(task_dir, "artifacts"), exist_ok=True)
     return 0
 
@@ -307,26 +391,30 @@ def cmd_materialize(task_dir):
 def cmd_status(task_dir):
     data = load_steps(task_dir)
     fields = data["fields"]
+    state = load_state(task_dir)
     print(f"任务 {data.get('task_id', '?')} v{data.get('version', '?')}")
     for f in fields:
-        rt = f.get("runtime", {})
-        fails = rt.get("failures", 0)
-        flag = f"  (failures={fails})" if fails else ""
+        fid = f["field"]
+        st = state.get(fid, {}).get("status", "pending")
         deps = field_inputs(f)
         dep_s = f"  <- {','.join(sorted(deps))}" if deps else ""
-        produce = field_produce(f["field"])
-        print(f"  {f['field']:<28} [{produce}]  {f['status']:<22} {f.get('name', '')}{flag}{dep_s}")
+        produce = field_produce(fid)
+        j = state.get(fid, {}).get("judgment")
+        j_s = f"  [判断={j}]" if j else ""
+        print(f"  {fid:<28} [{produce}]  {st:<12}{j_s} {f.get('name', '')}{dep_s}")
 
 
 def cmd_ready(task_dir):
     data = load_steps(task_dir)
     fields = data["fields"]
+    state = load_state(task_dir)
     ready = []
     blocked = []
     for f in fields:
-        if f["status"] != "pending":
+        fid = f["field"]
+        if state.get(fid, {}).get("status") not in (None, "failed", "needs_reorchestration"):
             continue
-        ok, why = prerequisites_met(fields, f)
+        ok, why = prerequisites_met(fields, state, f)
         if ok:
             ready.append(f)
         else:
@@ -478,20 +566,24 @@ def cmd_t3(task_dir, fid):
 
 
 def cmd_check(task_dir, fid):
-    """前置门禁 → running → 后置门禁（generate 验 schema / discriminate 验路由）→ passed/路由。"""
+    """前置门禁 → 产物检查 → state.csv 追加行（passed/failed）。
+
+    状态真相源 = state.csv（追加行，最后一行=当前状态）。steps.json 只保留结构。
+    判别式：判断值 ∈ routing keys → 路由（回修目标重写 state 行，stop 终止）。
+    """
     data = load_steps(task_dir)
     fields = data["fields"]
     field = get_field(fields, fid)
     if field is None:
         sys.exit(f"字段不存在: {fid}")
-    if field["status"] not in ("pending", "running", "failed"):
-        sys.exit(f"字段 {fid} 当前状态 {field['status']}，不能 check")
+    state = load_state(task_dir)
+    cur = state.get(fid, {}).get("status")
+    if cur not in (None, "failed", "needs_reorchestration"):
+        sys.exit(f"字段 {fid} 当前状态 {cur}，不能 check")
 
-    ok, why = prerequisites_met(fields, field)
+    ok, why = prerequisites_met(fields, state, field)
     if not ok:
         sys.exit(f"前置门禁拦截: {fid} — {why}")
-
-    transition(fields, fid, "running")
 
     modules = load_modules(task_dir)
     module = modules.get(field["module"], {})
@@ -504,29 +596,28 @@ def cmd_check(task_dir, fid):
         ok = ok and ok2
         issues = issues + issues2
 
+    produce = field_produce(fid)
     if not ok:
-        record_failure(field, "; ".join(issues), "artifact_missing")
-        fails = field["runtime"]["failures"]
-        if fails >= MAX_FAILURES:
-            transition(fields, fid, "needs_reorchestration")
-            save_steps(task_dir, data)
-            print(f"{fid} FAILED ✗（第 {fails} 次失败，达阈值 {MAX_FAILURES}）→ needs_reorchestration")
-            for i in issues:
-                print(f"  ✗ {i}")
-            return 1
-        transition(fields, fid, "failed")
-        save_steps(task_dir, data)
+        st = state.get(fid, {})
+        fails = int(st.get("failures", 0) or 0) + 1
+        new_status = "needs_reorchestration" if fails >= MAX_FAILURES else "failed"
+        append_state(task_dir, fid, produce, new_status, module=field["module"])
+        import datetime
+        ts = datetime.datetime.now().isoformat(timespec="seconds")
+        with open(os.path.join(task_dir, STATE_FILE), "a", encoding="utf-8", newline="") as f:
+            csv.writer(f).writerow([fid, produce, new_status, "", field["module"], f"failures={fails}", ts])
         print(f"{fid} FAILED ✗（failures={fails}，达 {MAX_FAILURES} 次将触发重新编排）")
         for i in issues:
             print(f"  ✗ {i}")
+        if new_status == "needs_reorchestration":
+            print(f"  → needs_reorchestration：回 Stage A 重新收敛")
         return 1
 
-    transition(fields, fid, "passed")
-    save_steps(task_dir, data)
+    append_state(task_dir, fid, produce, "passed", module=field["module"])
     print(f"{fid} PASSED ✓")
 
-    # 判别式：路由生效——目标字段解锁/重置，stop 终止
-    if field_produce(fid) == "discriminate":
+    # 判别式：路由生效——读判断值 → 路由目标
+    if produce == "discriminate":
         routing = field.get("routing") or module.get("routing") or {}
         try:
             with open(os.path.join(task_dir, f"artifacts/{fid}.json"), "r", encoding="utf-8-sig") as f:
@@ -542,20 +633,21 @@ def cmd_check(task_dir, fid):
             print(f"  ⚠ 判别式 {fid} 未找到判断项值（routing 无法生效）")
         else:
             target = routing.get(verdict)
+            append_state(task_dir, fid, produce, "passed", judgment=verdict,
+                         module=field["module"], routing_target=target or "")
             if target == "stop":
                 print(f"  → 路由: {verdict} → stop（任务终止）")
             elif target:
                 t_field = get_field(fields, target)
                 if t_field is None:
                     print(f"  → 路由: {verdict} → {target}（目标字段不存在，仅提示）")
-                elif t_field["status"] == "passed":
-                    # 回修语义：目标已 passed → 重置为 pending（清除产物与失败计数），阻断下游
-                    t_field["status"] = "pending"
-                    t_field.pop("runtime", None)
+                elif state.get(target, {}).get("status") == "passed":
+                    append_state(task_dir, target, field_produce(target), "pending",
+                                 module=get_field(fields, target)["module"])
                     for ff in fields:
                         if ff["field"] != target and field_inputs(ff).intersection({target}):
-                            ff["status"] = "pending"
-                    save_steps(task_dir, data)
+                            append_state(task_dir, ff["field"], field_produce(ff["field"]), "pending",
+                                         module=ff["module"])
                     print(f"  → 路由: {verdict} → {target}（回修：{target} 重置为 pending，下游同步重置）")
                 else:
                     print(f"  → 路由: {verdict} → {target}")
@@ -567,10 +659,11 @@ def cmd_retry(task_dir, fid):
     field = get_field(data["fields"], fid)
     if field is None:
         sys.exit(f"字段不存在: {fid}")
-    if field["status"] != "failed":
-        sys.exit(f"只有 failed 字段可 retry（当前 {field['status']}）")
-    transition(data["fields"], fid, "pending")
-    save_steps(task_dir, data)
+    state = load_state(task_dir)
+    cur = state.get(fid, {}).get("status")
+    if cur != "failed":
+        sys.exit(f"只有 failed 字段可 retry（当前 {cur}）")
+    append_state(task_dir, fid, field_produce(fid), "pending", module=field["module"])
     print(f"{fid} → pending（重试）")
 
 
@@ -579,11 +672,11 @@ def cmd_reset(task_dir, fid):
     field = get_field(data["fields"], fid)
     if field is None:
         sys.exit(f"字段不存在: {fid}")
-    if field["status"] != "needs_reorchestration":
-        sys.exit(f"只有 needs_reorchestration 字段可 reset（当前 {field['status']}）")
-    transition(data["fields"], fid, "pending")
-    field.pop("runtime", None)
-    save_steps(task_dir, data)
+    state = load_state(task_dir)
+    cur = state.get(fid, {}).get("status")
+    if cur != "needs_reorchestration":
+        sys.exit(f"只有 needs_reorchestration 字段可 reset（当前 {cur}）")
+    append_state(task_dir, fid, field_produce(fid), "pending", module=field["module"])
     print(f"{fid} → pending（重新编排完成，失败计数已清零）")
 
 
