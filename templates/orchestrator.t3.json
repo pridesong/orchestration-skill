@@ -38,21 +38,23 @@
     }
   },
   "fill": [
-    "steps.json.fields[]: 每行 = { field, name, module, inputs, routing?, acceptance_criteria?, status }。field 命名：generate_N（产出落盘即推进）或 discriminate_N_xxx（判断项值路由分支）。module 从 modules.json 库挑选（mod-generate/mod-extract/mod-transform/mod-query/mod-reason/mod-fill/mod-verify/mod-audit/mod-classify）",
-    "discriminate 字段必须有 routing：判断值 → 目标字段（generate_N）或 stop。routing 键集 = 判断项合法值域",
+    "steps.json.fields[]: 每行 = { field, name, module, inputs, next?, parallel?, routing?, acceptance_criteria?, status }。field 命名：generate_N（产出落盘即推进）或 discriminate_N_xxx（判断项值路由分支）。module 从 modules.json 库挑选",
+    "generate 字段必须声明推进：串行用 next（本字段完成后 → 目标）；并行用 parallel（组内字段同一数组声明）+ next（组全部完成 → 目标）——op-table 完全由你的声明展开，executor 零推导",
+    "discriminate 字段必须有 routing：判断值 → 目标字段或 stop；复杂判别用对象形态 {to, counter, limit, escalate, mind}",
     "minds.json.minds: 定义 fields 引用/覆盖的 mind；引用现有 mind 参数集（mind-write/mind-extract/mind-audit 等）而非发明"
   ],
   "rules": [
     "模块装配优先：能用模块库的模块就不自造协议——module 决定 produce（generate/discriminate）、mind 参数集、output_schema、默认 forbidden",
-    "generate 字段：产出 artifacts/<field>.json，落盘 + schema 验证即推进；不要给它 routing",
-    "discriminate 字段：产出判断项（如 verdict），值必须命中 routing 键；routing 目标必须是存在的字段或 stop——判别式是分支点，让状态机从线性变树",
-    "inputs 连线：{参数名: 来源}，来源是前序字段名（generate_01）或 artifacts/ 相对路径；依赖由此机械推导，不要手写 depends_on",
-    "链路确立：先列出任务的独立子目标（哪些产出、哪些判断），再按依赖连成字段序列；generate 序列编号递增",
+    "generate 字段：产出 artifacts/<field>.json，落盘 + schema 验证即推进；必须显式声明 next（串行）或 parallel+next（并行组），禁止依赖装配顺序自动推进——状态机形态由你设计，不是由字段排列顺序决定",
+    "并行语义：互不依赖的字段声明同一 parallel 组（组内每个字段都写 parallel: [组内全部字段]），组内字段写在同一行（state.csv 同行填充），组全部完成（多条件 AND）才推进到 next；串行字段各占一行",
+    "discriminate 字段：产出判断项，值必须命中 routing 键；routing 目标必须是存在的字段或 stop——判别式是分支点，让状态机从线性变树；复杂判别用对象形态 {to, counter, limit, escalate, mind}（审计回退机制）",
+    "inputs 连线：{参数名: 来源}，来源是前序字段名或 artifacts/ 相对路径；用于注入产物内容，不决定路由",
+    "链路确立：先列出任务的独立子目标（哪些产出、哪些判断），再设计状态机形态（串行链/并行组/判别分支/回退）并逐字段声明",
     "mind 匹配：generate 用 mind-write/mind-extract/mind-transform/mind-query/mind-reason/mind-fill；discriminate 用 mind-verify/mind-audit/mind-classify——由模块默认，仅在需要时 mind_ref 覆盖",
     "acceptance_criteria 可追加（模块 verify 之后），必须机械可检查",
     "capability provenance: 模块自带的 skills/mcp 来自 modules.json；若需额外能力在任务级 modules.json 添加模块，不得在 steps.json 发明能力",
     "草稿态：产出写入 <task_dir>/draft/，只做设计收敛，不进入状态机；你完成后主 agent 会机械校验（validate.py）并派独立审计，若收到 revise 反馈（校验错误或审计意见），按反馈修改 draft/ 下的文件即可，不要重写整个协议——这是同一会话内的多轮迭代",
-    "mind-orchestrator (编排者思维，LLM 心理学约束)：对抗三个默认路径——① C05 早期锚定：先列出任务的独立子目标（产出/判断）再定字段序列，禁止跳过目标分解直接写 fields；② C03 路径锁定：模块选择必须由该字段要回答的问题驱动，不是由模板熟悉度驱动；③ C02 执行启动缺失：每个字段的验收必须机械可查，禁止 looks reasonable。编排完成后自检：每个字段的 module 是否在模块库？discriminate 是否都有 routing 且目标存在？inputs 连线是否指向存在的字段？是否还有可并行却串行的字段？"
+    "mind-orchestrator (编排者思维，LLM 心理学约束)：对抗三个默认路径——① C05 早期锚定：先列出任务的独立子目标（产出/判断）再设计状态机形态（串行/并行/分支/回退），禁止跳过目标分解直接写 fields；② C03 路径锁定：模块选择与路由设计必须由任务真实依赖驱动，不是由模板熟悉度驱动；③ C02 执行启动缺失：每个字段的验收必须机械可查。自检：每个 generate 是否显式声明了 next 或 parallel？并行组字段是否都声明同一组？discriminate 是否都有 routing？可并行字段是否已声明并行组（而非串行）？"
   ],
   "schema": {
     "steps": "schemas/steps.schema.json",

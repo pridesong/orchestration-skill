@@ -7,25 +7,43 @@
       "field": "generate_01",
       "name": "收集资料",
       "module": "mod-query",
-      "inputs": { "topic": "示例主题" },
-      "acceptance_criteria": ["items 非空", "每条含 source 字段"],
-      "status": "pending"
+      "inputs": {
+        "topic": "示例主题"
+      },
+      "acceptance_criteria": [
+        "items 非空",
+        "每条含 source 字段"
+      ],
+      "status": "pending",
+      "next": "generate_02"
     },
     {
       "field": "generate_02",
       "name": "分析",
       "module": "mod-reason",
-      "inputs": { "source": "generate_01" },
-      "acceptance_criteria": ["findings 非空", "每条 finding 附证据引用"],
-      "status": "pending"
+      "inputs": {
+        "source": "generate_01"
+      },
+      "acceptance_criteria": [
+        "findings 非空",
+        "每条 finding 附证据引用"
+      ],
+      "status": "pending",
+      "next": "generate_03"
     },
     {
       "field": "generate_03",
       "name": "生成报告",
       "module": "mod-generate",
-      "inputs": { "source": "generate_02" },
-      "acceptance_criteria": ["报告文件存在", "含结论章节"],
-      "status": "pending"
+      "inputs": {
+        "source": "generate_02"
+      },
+      "acceptance_criteria": [
+        "报告文件存在",
+        "含结论章节"
+      ],
+      "status": "pending",
+      "next": "stop"
     }
   ]
 }

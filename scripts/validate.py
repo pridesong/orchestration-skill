@@ -76,6 +76,45 @@ def check_field_refs(fields, module_ids, errors):
                         errors.append(f"steps.json: 字段 {fid} 的 routing[{val}] 目标不存在: {target}")
 
 
+def check_next_parallel(fields, errors):
+    """generate 字段必须显式声明推进（next 串行 或 parallel 并行组 + next）；
+    parallel 组一致性：组内字段声明同一组；next 目标存在。"""
+    field_ids = {f.get("field") for f in fields if f.get("field")}
+    gen_ids = [f for f in fields if f.get("field") and GEN_FIELD.match(f.get("field"))]
+
+    # 并行组一致性：每个字段的 parallel 组必须与组内其他字段声明一致
+    declared_groups = {}
+    for f in fields:
+        fid = f.get("field")
+        if not fid:
+            continue
+        pg = f.get("parallel")
+        if pg is not None and (not isinstance(pg, list) or not pg):
+            errors.append(f"steps.json: 字段 {fid} 的 parallel 必须是非空数组（组内字段列表）")
+        elif pg:
+            declared_groups[fid] = set(pg)
+            # 组内字段必须都存在
+            for g in pg:
+                if g not in field_ids:
+                    errors.append(f"steps.json: 字段 {fid} 的 parallel 引用不存在的字段: {g}")
+
+    # 并行组对称性：若 A 声明组含 B，B 必须声明同一组
+    for fid, grp in declared_groups.items():
+        for g in grp:
+            if g in declared_groups and declared_groups[g] != grp:
+                errors.append(f"steps.json: 并行组不一致——{fid} 声明 {sorted(grp)}，{g} 声明 {sorted(declared_groups[g])}")
+
+    # generate 必须声明 next 或 parallel；next 目标存在
+    for f in gen_ids:
+        fid = f["field"]
+        nxt = f.get("next")
+        pg = f.get("parallel")
+        if not nxt and not pg:
+            errors.append(f"steps.json: generate 字段 {fid} 必须显式声明推进（next 或 parallel+next）——op-table 由声明展开，不依赖装配顺序")
+        if nxt and nxt != "stop" and nxt not in field_ids:
+            errors.append(f"steps.json: 字段 {fid} 的 next 目标不存在: {nxt}")
+
+
 def check_acyclic(fields, errors):
     """Kahn 拓扑排序检测依赖环（inputs 连线 + 判别路由目标）。"""
     field_ids = {f["field"] for f in fields if f.get("field")}
@@ -201,6 +240,7 @@ def main():
             modules = load_modules(task_dir)
             check_field_names(fields, errors)
             check_field_refs(fields, set(modules.keys()), errors)
+            check_next_parallel(fields, errors)
             check_acyclic(fields, errors)
             check_minds(fields, task_dir, errors)
             check_capability_slots(task_dir, fields, errors)

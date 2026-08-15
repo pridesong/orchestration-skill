@@ -32,7 +32,8 @@
         "source_files 数组长度 >= 5，每条含 path/role 字段且均非空",
         "repo_written 字段 == false（本轮未写 DSH 仓库任何文件）"
       ],
-      "status": "pending"
+      "status": "pending",
+      "next": "generate_02"
     },
     {
       "field": "generate_02",
@@ -51,7 +52,8 @@
         "transport_decision 含 type/endpoint/auth 字段且均非空；type 与 s001.protocol_surface.transport 一致；auth 为 \"none\"（无认证）或具体认证机制名（如 token/trust_check/bearer）",
         "contract_refs 数组长度 >= 3，每条含 source/evidence 字段且均非空（引用 s001 探查到的具体文件与键名）"
       ],
-      "status": "pending"
+      "status": "pending",
+      "next": "generate_03"
     },
     {
       "field": "generate_03",
@@ -72,7 +74,8 @@
         "auth_handling 含 decision/implemented/note 字段：decision 与 s002.transport_decision.auth 一致；当 auth != \"none\" 时 implemented == true 且 test_transport.py 含认证断言（grep \"token\" 或 \"authorization\" 或 \"trust\" 命中 >= 1）；当 auth == \"none\" 时 implemented == false 且 note 记录豁免（无认证要求）",
         "dsh_client/dsh_client/ 下全部 .py 的 import 无第三方包（grep 检查 requests/websocket/httpx/aiohttp 0 命中，仅标准库与本地模块）"
       ],
-      "status": "pending"
+      "status": "pending",
+      "next": "generate_04"
     },
     {
       "field": "generate_04",
@@ -93,7 +96,8 @@
         "auth_handling 含 decision/implemented/note 字段：decision 与 s002.transport_decision.auth 一致；当 auth != \"none\" 时 implemented == true 且 test_client.py 含认证断言（grep \"token\" 或 \"authorization\" 或 \"trust\" 命中 >= 1）；当 auth == \"none\" 时 implemented == false 且 note 记录豁免",
         "dsh_client/dsh_client/ 下全部 .py 的 import 无第三方包（grep 检查 requests/websocket/httpx/aiohttp 0 命中）"
       ],
-      "status": "pending"
+      "status": "pending",
+      "next": "generate_05"
     },
     {
       "field": "generate_05",
@@ -115,7 +119,8 @@
         "test_summary 含 passed/failed 字段，passed >= 3 且 failed == 0",
         "dsh_client/dsh_client/ 下全部 .py 的 import 无第三方包（grep 检查 requests/websocket/httpx/aiohttp 0 命中）"
       ],
-      "status": "pending"
+      "status": "pending",
+      "next": "discriminate_01_verdict"
     },
     {
       "field": "discriminate_01_verdict",
@@ -230,7 +235,8 @@
         "报告含 \"复现\" 小节且含 pytest 运行命令（grep \"pytest\" 命中 >= 2）",
         "报告含 \"failed=0\" 字样（最终全量测试结果，grep 命中 >= 1）"
       ],
-      "status": "pending"
+      "status": "pending",
+      "next": "stop"
     }
   ]
 }

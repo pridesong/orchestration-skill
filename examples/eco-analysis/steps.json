@@ -17,7 +17,8 @@
         "每条 repo 含 name 与 url 字段",
         "fetched_at 字段非空"
       ],
-      "status": "pending"
+      "status": "pending",
+      "next": "generate_02"
     },
     {
       "field": "generate_02",
@@ -38,7 +39,8 @@
         "每条 topic 含 keyword 与 evidence_url 字段",
         "fetched_at 字段非空"
       ],
-      "status": "pending"
+      "status": "pending",
+      "next": "generate_03"
     },
     {
       "field": "generate_03",
@@ -56,7 +58,8 @@
         "每条 statement 含 quote 与 source_url 字段",
         "source_url 字段非空"
       ],
-      "status": "pending"
+      "status": "pending",
+      "next": "generate_04"
     },
     {
       "field": "generate_04",
@@ -76,7 +79,8 @@
         "每条 risk 含 description 与 evidence_ref 字段",
         "conclusion 字段非空"
       ],
-      "status": "pending"
+      "status": "pending",
+      "next": "generate_05"
     },
     {
       "field": "generate_05",
@@ -90,7 +94,8 @@
         "报告含章节标题'生态位机会'",
         "报告含至少 3 个 https:// 来源链接"
       ],
-      "status": "pending"
+      "status": "pending",
+      "next": "stop"
     }
   ]
 }

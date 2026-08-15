@@ -21,6 +21,15 @@
             "pattern": "^(generate_[0-9]+|discriminate_[0-9]+_[a-z][a-z0-9_]*)$",
             "description": "字段名即状态语义：generate_N=生成式产出（落盘即推进）；discriminate_N_xxx=判别式判断项（值决定路由，尾字节定义判断项）"
           },
+          "next": {
+            "type": "string",
+            "description": "generate 字段的显式推进目标（串行）：本字段完成后 → next。op-table 据此生成规则，executor 零推导。"
+          },
+          "parallel": {
+            "type": "array",
+            "items": { "type": "string", "pattern": "^generate_[0-9]+$" },
+            "description": "并行组声明（generate 字段）：组内字段写在同一行（state.csv 同行填充），全部完成（op-table 多条件 AND）→ next。组内每个字段都声明同一 parallel 数组。"
+          },
           "name": { "type": "string", "minLength": 1 },
           "module": { "type": "string", "pattern": "^mod-" },
           "inputs": {

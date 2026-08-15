@@ -132,21 +132,49 @@ def load_state(task_dir):
     return {k: v for k, v in last.items() if not k.startswith("_") and v}
 
 
-def append_state(task_dir, fields, fid, value, note=""):
-    """追加一行：**只填当前步的 fid 列**，其他列全空（无继承）。
+def append_state(task_dir, fields, fid, value, note="", parallel_group=None):
+    """追加/填充一行：串行字段新开一行；并行组字段填入组所在行。
 
-    每行 = 一步的产出记录；op-table 只读最后一行。generate 行填状态，
-    discriminate 行填判断值（verdict 即状态）。
+    并行语义：组内字段写在同一行（state.csv 同行填充多字段），
+    组全部完成（op-table 多条件 AND 匹配）才推进。若最后一行已是
+    本并行组所在行（含组内其他字段），则填充该行；否则新开一行。
     """
     path = os.path.join(task_dir, STATE_FILE)
     import datetime
     ts = datetime.datetime.now().isoformat(timespec="seconds")
     cols = state_columns(fields)
+    is_new = not os.path.exists(path)
+
+    # 并行组：定位组所在行（最后一行若已含组内其他字段则复用）
     row = {c: "" for c in cols}
+    if not is_new and parallel_group:
+        try:
+            with open(path, "r", encoding="utf-8-sig") as f:
+                rows = list(csv.DictReader(f))
+            if rows:
+                last = rows[-1]
+                group_done = [g for g in parallel_group if g != fid and last.get(g)]
+                if group_done:
+                    # 复用最后一行（组内已有其他字段），填充本字段
+                    row = {c: (last.get(c) or "") for c in cols}
+                    row[fid] = value
+                    row["_ts"] = ts
+                    row["_note"] = note
+                    # 重写最后一行（去掉旧最后一行再追加）
+                    with open(path, "r", encoding="utf-8-sig") as f:
+                        all_lines = f.readlines()
+                    with open(path, "w", encoding="utf-8", newline="") as f:
+                        f.writelines(all_lines[:-1])
+                    with open(path, "a", encoding="utf-8", newline="") as f:
+                        csv.writer(f).writerow([row.get(c, "") for c in cols])
+                    return
+        except (csv.Error, OSError):
+            pass
+
+    # 新行：只填当前字段
     row[fid] = value
     row["_ts"] = ts
     row["_note"] = note
-    is_new = not os.path.exists(path)
     with open(path, "a", encoding="utf-8", newline="") as f:
         writer = csv.writer(f)
         if is_new:
@@ -156,6 +184,15 @@ def append_state(task_dir, fields, fid, value, note=""):
 
 def state_status(task_dir, fid):
     return load_state(task_dir).get(fid, "")
+
+
+def field_parallel_group(fields, fid):
+    """字段声明的并行组（parallel 数组），无则 None。"""
+    f = get_field(fields, fid)
+    if f is None:
+        return None
+    p = f.get("parallel")
+    return p if isinstance(p, list) and p else None
 
 
 def field_produce(fid):
@@ -177,11 +214,20 @@ def record_failure(f, reason, cls):
 # ---------- 依赖推导（inputs 连线 + 判别路由，状态来自 state.csv） ----------
 
 def field_inputs(field):
-    """字段依赖：inputs 连线中的前序字段名 + 模块 input_schema 引用的来源。"""
+    """字段依赖：inputs 连线中的前序字段名（字符串或数组值都解析）。
+
+    支持 {source: "generate_01"}、{premises: ["generate_01", ...]}、
+    {target: ["generate_03", "generate_04"]} 等形态。
+    """
     deps = set()
     for v in (field.get("inputs") or {}).values():
-        if isinstance(v, str) and (GEN_FIELD.match(v) or DIS_FIELD.match(v)):
-            deps.add(v)
+        if isinstance(v, str):
+            if GEN_FIELD.match(v) or DIS_FIELD.match(v):
+                deps.add(v)
+        elif isinstance(v, list):
+            for item in v:
+                if isinstance(item, str) and (GEN_FIELD.match(item) or DIS_FIELD.match(item)):
+                    deps.add(item)
     return deps
 
 
@@ -372,61 +418,93 @@ def entry_fields(fields):
 def generate_op_table(fields, modules):
     """从编排者设计生成 op-table.json（条件路由表，排它）。
 
-    状态机形态由编排者设计决定：
-      generate 字段 → {condition: "<field>=passed", dispatch: "<拓扑序最前的消费者>"}
-      discriminate 字段 → 判别点路由设计展开：
-        字符串目标 → {condition: "<field>=<verdict>", dispatch: "<目标>"}
-        对象机制（审计回退）→ 展开：
-          {condition: "<field>=<verdict>", dispatch: "<to>", side_effect: "<cnt>+1", mind: "<mind>"}
-          {condition: "<field>=<verdict>,<cnt>>=<limit>", dispatch: "<escalate>"}
-    生成器读编排者的判别点设计，机械展开为 op-table；形态随设计变化。
+    op-table 完全由编排者的显式声明展开（executor 零推导）：
+      generate 字段：
+        {"next": "generate_04"} → {condition: "<field>=passed", dispatch: "<next>"}
+          串行推进：本字段完成后 → next。
+        {"parallel": ["generate_01","generate_02","generate_03"], "next": "generate_04"}
+          → {condition: "generate_01=passed,generate_02=passed,generate_03=passed", dispatch: "<next>"}
+          并行组：组内字段同行填充（state.csv 一行多字段），全部完成（多条件 AND）→ next。
+        parallel 组内每个字段各自声明该组（组 ID 相同），组完成条件由组的字段集合推导。
+      discriminate 字段：{"routing": {...}} → 判别点路由展开（见下）。
+
+    并行语义（用户定义）：并行字段写在同一行（state.csv 同行填充），op-table 用多条件
+    AND 表达"组完成才推进"；串行字段各占一行。形态完全由编排者声明决定。
     """
     operations = []
-    topo = topological_order(fields)
 
+    def collect_next_rules():
+        """收集 generate 字段的 next/parallel 声明，去重生成推进规则。
+
+        返回 {(group_fields_tuple, next_target): {fields, next}}。
+        parallel 组：组内所有字段都声明同一 parallel 数组；取第一字段的 parallel 作为组。
+        """
+        rules = {}
+        for f in fields:
+            fid = f["field"]
+            produce = field_produce(fid)
+            if produce != "generate":
+                continue
+            parallel = f.get("parallel")
+            nxt = f.get("next")
+            if not nxt:
+                continue
+            if parallel:
+                # 并行组：组 = 排序后的 parallel 字段元组
+                group = tuple(sorted(parallel))
+                rules.setdefault(("PARALLEL", group), {"fields": set(group), "next": nxt, "kind": "parallel"})
+            else:
+                # 串行
+                rules.setdefault(("SEQ", fid), {"fields": {fid}, "next": nxt, "kind": "seq"})
+        return rules
+
+    for (kind, key), rule in sorted(collect_next_rules().items(), key=lambda kv: (str(kv[0][1]), kv[0][0])):
+        fields_in = sorted(rule["fields"])
+        if rule["kind"] == "parallel":
+            cond = ",".join(f"{fid}=passed" for fid in fields_in)
+        else:
+            cond = f"{key}=passed"
+        operations.append({
+            "condition": cond,
+            "dispatch": rule["next"],
+            "side_effect": None,
+        })
+
+    # discriminate：判别点路由展开（编排者设计每个判别点怎么路由）
     for f in fields:
         fid = f["field"]
         produce = field_produce(fid)
         module = modules.get(f["module"], {})
-        if produce == "generate":
-            consumers = [c for c in topo if c != fid and fid in field_inputs(get_field(fields, c))]
-            nxt = consumers[0] if consumers else "stop"
-            operations.append({
-                "condition": f"{fid}=passed",
-                "dispatch": nxt,
-                "side_effect": None,
-            })
-        elif produce == "discriminate":
-            routing = f.get("routing") or module.get("routing") or {}
-            for verdict, target in routing.items():
-                if isinstance(target, str):
+        if produce != "discriminate":
+            continue
+        routing = f.get("routing") or module.get("routing") or {}
+        for verdict, target in routing.items():
+            if isinstance(target, str):
+                operations.append({
+                    "condition": f"{fid}={verdict}",
+                    "dispatch": target,
+                    "side_effect": None,
+                })
+            elif isinstance(target, dict):
+                to = target.get("to", "stop")
+                cnt = target.get("counter", f"{fid}_count")
+                limit = target.get("limit")
+                escalate = target.get("escalate")
+                mind = target.get("mind")
+                if limit is not None and escalate:
                     operations.append({
-                        "condition": f"{fid}={verdict}",
-                        "dispatch": target,
+                        "condition": f"{fid}={verdict},{cnt}>={limit}",
+                        "dispatch": escalate,
                         "side_effect": None,
                     })
-                elif isinstance(target, dict):
-                    # 审计回退机制：目标 + 计数 + 换脑 + mind 覆盖
-                    # 顺序语义：escalate（更严格条件）规则先于普通回退——排它由顺序 + 条件互斥保证
-                    to = target.get("to", "stop")
-                    cnt = target.get("counter", f"{fid}_count")
-                    limit = target.get("limit")
-                    escalate = target.get("escalate")
-                    mind = target.get("mind")
-                    if limit is not None and escalate:
-                        operations.append({
-                            "condition": f"{fid}={verdict},{cnt}>={limit}",
-                            "dispatch": escalate,
-                            "side_effect": None,
-                        })
-                    op = {
-                        "condition": f"{fid}={verdict}",
-                        "dispatch": to,
-                        "side_effect": f"{cnt}+1" if limit is not None else None,
-                    }
-                    if mind:
-                        op["mind"] = mind
-                    operations.append(op)
+                op = {
+                    "condition": f"{fid}={verdict}",
+                    "dispatch": to,
+                    "side_effect": f"{cnt}+1" if limit is not None else None,
+                }
+                if mind:
+                    op["mind"] = mind
+                operations.append(op)
     return operations
 
 
@@ -536,12 +614,16 @@ def cmd_status(task_dir, extra_state=None):
         deps = field_inputs(f)
         dep_s = f"  <- {','.join(sorted(deps))}" if deps else ""
         marker = " ◀ 下一步" if fid == nxt else ""
-        if produce == "discriminate" and state.get(fid):
-            print(f"  {fid:<28} [{produce}]  [判断={state[fid]}]{marker} {f.get('name', '')}{dep_s}")
-        elif state.get(fid):
-            print(f"  {fid:<28} [{produce}]  {state[fid]:<12}{marker} {f.get('name', '')}{dep_s}")
+        if produce == "discriminate":
+            if state.get(fid):
+                print(f"  {fid:<28} [{produce}]  [判断={state[fid]}]{marker} {f.get('name', '')}{dep_s}")
+            else:
+                print(f"  {fid:<28} [{produce}]  {'未判别':<12}{marker} {f.get('name', '')}{dep_s}")
         else:
-            print(f"  {fid:<28} [{produce}]  {'未执行':<12}{marker} {f.get('name', '')}{dep_s}")
+            # 完成性 = 产物文件存在（物化语义）；最后一行驱动下一步
+            done = os.path.exists(os.path.join(task_dir, f"artifacts/{fid}.json"))
+            st = "done" if done else "未执行"
+            print(f"  {fid:<28} [{produce}]  {st:<12}{marker} {f.get('name', '')}{dep_s}")
     if nxt is None:
         print("  当前无下一步（初始态或已终止）")
     elif nxt_mind:
@@ -558,8 +640,17 @@ def cmd_ready(task_dir, extra_state=None):
     nxt = nxt_result["dispatch"] if nxt_result else None
     nxt_mind = nxt_result.get("mind") if nxt_result else None
     if nxt is None:
-        # 初始态：入口字段（入度 0，无 inputs 依赖）
-        entries = entry_fields(fields)
+        # 初始态：入口字段 = 未被任何串行 next 或并行组 next 指向的字段
+        # （并行组内互相引用不算前驱）
+        referenced = set()
+        for f in fields:
+            n = f.get("next")
+            if n and n != "stop":
+                referenced.add(n)
+            pg = f.get("parallel")
+            if pg and f.get("next"):
+                referenced.add(f["next"])
+        entries = [f["field"] for f in fields if f["field"] not in referenced]
         nxt = entries[0] if entries else (fields[0]["field"] if fields else None)
     if nxt is None or nxt == "stop":
         print("无可执行字段（任务已终止）")
@@ -568,13 +659,28 @@ def cmd_ready(task_dir, extra_state=None):
     if f is None:
         print(f"op-table 指向不存在的字段: {nxt}")
         return
-    produce = field_produce(nxt)
-    print(f"下一步（op-table 驱动）：{nxt}  [{produce}]  {f.get('name', '')}")
-    print(f"      module: {f['module']}")
-    print(f"      产出: artifacts/{nxt}.json")
-    if nxt_mind:
-        print(f"      mind: {nxt_mind}（op-table 指定换脑）")
-    print(f"      执行后调用 check {nxt} 验证推进")
+
+    # 并行组：若 nxt 在并行组内，列出整个组（并行执行）
+    pgroup = field_parallel_group(fields, nxt)
+    if pgroup:
+        print(f"下一步（并行组，组内字段并行执行）：")
+        for fid in pgroup:
+            gf = get_field(fields, fid)
+            if gf is None:
+                continue
+            produce = field_produce(fid)
+            print(f"  {fid}  [{produce}]  {gf.get('name', '')}")
+            print(f"      module: {gf['module']}")
+            print(f"      产出: artifacts/{fid}.json")
+        print(f"      组内全部完成后（check 各字段）→ {f.get('next', 'stop')}")
+    else:
+        produce = field_produce(nxt)
+        print(f"下一步（op-table 驱动）：{nxt}  [{produce}]  {f.get('name', '')}")
+        print(f"      module: {f['module']}")
+        print(f"      产出: artifacts/{nxt}.json")
+        if nxt_mind:
+            print(f"      mind: {nxt_mind}（op-table 指定换脑）")
+        print(f"      执行后调用 check {nxt} 验证推进")
 
 
 # ---------- T3 派发（消息即任务，零引导语） ----------
@@ -674,6 +780,27 @@ def cmd_t3(task_dir, fid):
             with open(fpath, "r", encoding="utf-8-sig") as f:
                 data_payload[dep] = f.read()
 
+    # feedback 注入：inputs.feedback 指向的产物文件（回退上下文传递，如 discriminate 的 failure_reason）
+    feedback_refs = field.get("inputs", {}).get("feedback")
+    if isinstance(feedback_refs, str):
+        feedback_refs = [feedback_refs]
+    if feedback_refs:
+        fb_list = []
+        for fb_path in feedback_refs:
+            if not isinstance(fb_path, str):
+                continue
+            fpath = os.path.join(task_dir, fb_path)
+            if not os.path.exists(fpath):
+                continue
+            try:
+                with open(fpath, "r", encoding="utf-8-sig") as f:
+                    fb_list.append(json.load(f))
+            except (json.JSONDecodeError, UnicodeDecodeError):
+                with open(fpath, "r", encoding="utf-8-sig") as f:
+                    fb_list.append(f.read())
+        if fb_list:
+            data_payload["feedback"] = fb_list
+
     # forbidden 合并：通用 + enforce + mind constraint + 模块 + 装配表
     enforce = mind.get("enforce") if mind else None
     enforce_fill = (enforce or {}).get("fill") or []
@@ -747,16 +874,17 @@ def cmd_check(task_dir, fid):
         issues = issues + issues2
 
     produce = field_produce(fid)
+    pgroup = field_parallel_group(fields, fid)
     if not ok:
-        append_state(task_dir, fields, fid, "failed", note=f"FAIL {'; '.join(issues)[:60]}")
+        append_state(task_dir, fields, fid, "failed", note=f"FAIL {'; '.join(issues)[:60]}", parallel_group=pgroup)
         print(f"{fid} FAILED ✗")
         for i in issues:
             print(f"  ✗ {i}")
         return 1
 
-    # generate：产物验证通过 → 追加状态行
+    # generate：产物验证通过 → 追加/填充状态行（并行组同行填充）
     if produce == "generate":
-        append_state(task_dir, fields, fid, "passed", note="执行完成")
+        append_state(task_dir, fields, fid, "passed", note="执行完成", parallel_group=pgroup)
         print(f"{fid} PASSED ✓")
         return 0
 
@@ -774,14 +902,14 @@ def cmd_check(task_dir, fid):
             break
     if verdict is None:
         print(f"  ⚠ 判别式 {fid} 未找到判断项值（routing 无法生效）")
-        append_state(task_dir, fields, fid, "passed", note="判断项缺失")
+        append_state(task_dir, fields, fid, "passed", note="判断项缺失", parallel_group=pgroup)
         return 0
     if verdict not in routing:
         print(f"  ✗ 判别式 {fid} 判断值 {verdict} 不在路由合法域 {sorted(routing.keys())}")
-        append_state(task_dir, fields, fid, "failed", note=f"路由非法 {verdict}")
+        append_state(task_dir, fields, fid, "failed", note=f"路由非法 {verdict}", parallel_group=pgroup)
         return 1
 
-    append_state(task_dir, fields, fid, verdict, note=f"判别 {verdict}")
+    append_state(task_dir, fields, fid, verdict, note=f"判别 {verdict}", parallel_group=pgroup)
     print(f"{fid} 判断 = {verdict} ✓")
     # 路由由 op-table 自然驱动：最后一行已是 <fid>=<verdict>，
     # next_field_by_op_table 将匹配 routing 目标（含回修指向 generate_01）。

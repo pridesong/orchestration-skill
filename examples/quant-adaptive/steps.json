@@ -42,7 +42,8 @@
         "pit_sources 含 weather_full 与 nmf_weather 两键，各含 dates_key/labels/index_meaning 字段（dates_key 可为 null，labels/index_meaning 非空）",
         "doc_pillars 数组长度 >= 3，每条含 title 与 summary 字段"
       ],
-      "status": "pending"
+      "status": "pending",
+      "next": "generate_02"
     },
     {
       "field": "generate_02",
@@ -63,7 +64,12 @@
         "lookahead_guard.labeled_length == 状态序列长度（occupancy 总和）",
         "artifacts/regime_series.py 文件存在"
       ],
-      "status": "pending"
+      "status": "pending",
+      "next": "generate_04",
+      "parallel": [
+        "generate_02",
+        "generate_03"
+      ]
     },
     {
       "field": "generate_03",
@@ -82,7 +88,12 @@
         "top_signals 数组长度 >= 10，每条含 id 与 ic_mean",
         "artifacts/signal_ic_pool.py 文件存在"
       ],
-      "status": "pending"
+      "status": "pending",
+      "next": "generate_04",
+      "parallel": [
+        "generate_02",
+        "generate_03"
+      ]
     },
     {
       "field": "generate_04",
@@ -108,7 +119,8 @@
         "state_ic_rank_corr 为数值且 ∈ [-1, 1]",
         "artifacts/signal_ic_long.py 文件存在"
       ],
-      "status": "pending"
+      "status": "pending",
+      "next": "generate_05"
     },
     {
       "field": "generate_05",
@@ -131,7 +143,8 @@
         "artifacts/build_route.py 文件存在",
         "artifacts/route_table.json 文件存在"
       ],
-      "status": "pending"
+      "status": "pending",
+      "next": "discriminate_01_verdict"
     },
     {
       "field": "discriminate_01_verdict",
@@ -223,7 +236,8 @@
         "报告含'复现'小节且列出至少 3 个 artifacts/ 下脚本文件名",
         "报告含'限制'小节且非空"
       ],
-      "status": "pending"
+      "status": "pending",
+      "next": "stop"
     }
   ]
 }
