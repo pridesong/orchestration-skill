@@ -162,6 +162,25 @@
         "instruction": "构造完全相反的命题。如果目标是'突破 X'，反目标就是'让 X 永远存在且不可绕过'。分析反目标成立的条件：什么物理/数学/工程约束会使它自然成立？哪些条件被当前方案默认接受？反目标揭示的盲区 = 正目标的最脆弱假设。"
       },
       "apply_to": []
+    },
+    {
+      "id": "mind-decider",
+      "name": "策略师思维（选重试思维）",
+      "type": "constraint",
+      "role": "audit",
+      "forbidden_density": "dense",
+      "params": {
+        "mode": "decide",
+        "source": "cataclysm mind-decider（策略师：读审计证据选思维）",
+        "principle": "读判别失败证据（failure_reason/成本结构/固定成本占比/可议价空间/失败类型）→ 判定重试该用哪种思维。实验证明：同是降本，mind-reason 只在方案内换承运商（−590），mind-crusher 翻转成本结构假设（议价/租赁/复用，−3054）——选哪种取决于超支结构：固定成本占比高 → 翻墙（crusher）；纯单价可换 → 重新推导（reason）；约束冲突 → triz；方案本身需重构 → 反目标。"
+      },
+      "forbidden": [
+        "禁止选装配表未声明的 mind",
+        "禁止无 basis 的选择——必须引用审计证据的具体条目（cost_items 占比/固定成本/可议价空间）",
+        "禁止默认选同一种思维——必须按证据结构区分",
+        "禁止给建议性散文——只输出 chosen_mind + basis"
+      ],
+      "apply_to": []
     }
   ]
 }

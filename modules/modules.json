@@ -125,6 +125,22 @@
         "禁止混淆类别边界",
         "禁止输出未定义的类别"
       ]
+    },
+    {
+      "id": "mod-mind-decider",
+      "name": "策略师（思维选择判别）",
+      "produce": "discriminate",
+      "mind": "mind-decider",
+      "input_schema": { "audit_evidence": "path" },
+      "output_schema": { "required": ["chosen_mind", "basis"] },
+      "routing": {},
+      "action": "读判别失败证据（failure_reason/超支结构/固定成本占比）→ 判定重试该用哪种思维",
+      "verify": "chosen_mind 必须是装配表声明的可用 mind 之一；basis 说明判定依据（成本结构/可议价空间/失败类型），机械可复算",
+      "forbidden": [
+        "禁止选装配表未声明的 mind",
+        "禁止无 basis 的选择——必须引用审计证据的具体条目",
+        "禁止默认选同一种思维——必须按证据结构区分"
+      ]
     }
   ]
 }

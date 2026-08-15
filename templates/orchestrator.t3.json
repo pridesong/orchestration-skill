@@ -41,7 +41,8 @@
     "steps.json.fields[]: 每行 = { field, name, module, inputs, next?, parallel?, routing?, acceptance_criteria?, status }。field 命名：generate_N（产出落盘即推进）或 discriminate_N_xxx（判断项值路由分支）。module 从 modules.json 库挑选",
     "generate 字段必须声明推进：串行用 next（本字段完成后 → 目标）；并行用 parallel（组内字段同一数组声明）+ next（组全部完成 → 目标）——op-table 完全由你的声明展开，executor 零推导",
     "discriminate 字段必须有 routing：判断值 → 目标字段或 stop；复杂判别用对象形态 {to, counter, limit, escalate, mind}",
-    "minds.json.minds: 定义 fields 引用/覆盖的 mind；引用现有 mind 参数集（mind-write/mind-extract/mind-audit 等）而非发明"
+    "回退思维选择（mind-decider）：复杂回退（如降本、重构）不要静态绑定 routing.mind——设计为判别失败 → mind-decider 字段（mod-mind-decider，产出 chosen_mind+basis）→ 路由到重试字段（带所选 mind）。实验证明：降本用 mind-reason 只在方案内换承运商，mind-crusher 翻转成本结构假设（议价/租赁/复用）——选哪种取决于超支结构，是运行时决策",
+    "minds.json.minds: 定义 fields 引用/覆盖的 mind；引用现有 mind 参数集（mind-write/mind-extract/mind-audit/mind-decider 等）而非发明"
   ],
   "rules": [
     "模块装配优先：能用模块库的模块就不自造协议——module 决定 produce（generate/discriminate）、mind 参数集、output_schema、默认 forbidden",

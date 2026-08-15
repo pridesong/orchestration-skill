@@ -295,17 +295,31 @@ def check_artifacts(task_dir, field, module):
             issues.append(f"产物 {out_file} 缺少字段 {field_name}")
 
     # discriminate：判断项值必须 ∈ routing keys（路由合法性）
+    # 只校验判断项字段（第一个 required 字符串字段），其余 required 字段（如 basis 证据）
+    # 是支撑内容不是路由值，不得参与路由合法域校验。
     if field_produce(field["field"]) == "discriminate":
         routing = field.get("routing") or module.get("routing") or {}
         if not routing:
             issues.append(f"判别字段 {field['field']} 无 routing（模块与装配表均未定义）")
-        for item in required:
-            if item in content and isinstance(content[item], str) and routing:
-                if content[item] not in routing:
-                    issues.append(
-                        f"产物 {out_file} 字段 {item}={content[item]} 不在路由合法域 {sorted(routing.keys())}"
-                    )
+        verdict_field = verdict_field_name(content, module)
+        if routing and verdict_field:
+            verdict = content.get(verdict_field)
+            if verdict not in routing:
+                issues.append(
+                    f"产物 {out_file} 判断项 {verdict_field}={verdict} 不在路由合法域 {sorted(routing.keys())}"
+                )
     return (len(issues) == 0), issues
+
+
+def verdict_field_name(content, module):
+    """判别式判断项字段名 = 第一个 required 且已存在的字符串字段。
+
+    cmd_check 与 check_artifacts 共用同一提取规则，保证校验对象与路由取值一致。
+    """
+    for item in (module.get("output_schema") or {}).get("required", []):
+        if item in content and isinstance(content[item], str):
+            return item
+    return None
 
 
 def collect_field_values(node, field):
@@ -699,12 +713,13 @@ def merge_schema(base, extra):
     return merged
 
 
-def cmd_t3(task_dir, fid):
+def cmd_t3(task_dir, fid, mind_override=None):
     """从装配表 + 模块 + mind 生成字段 T3 六件套。
 
     rules = 任务描述 + 模块 action/verify + 验收标准 + mind 指令 + 能力插槽
     schema = 模块 output_schema + enforce.schema
     forbidden = 通用 + mind constraint + 模块 forbidden + 装配表 forbidden
+    mind_override：回退重跑时主 agent 指定思维（如 crusher 降本），覆盖字段/模块默认 mind
     """
     data = load_steps(task_dir)
     fields = data["fields"]
@@ -716,7 +731,7 @@ def cmd_t3(task_dir, fid):
     if module is None:
         sys.exit(f"模块不存在: {field['module']}（检查 modules.json）")
     minds = load_minds(task_dir)
-    mind = minds.get(field.get("mind_ref") or module.get("mind"))
+    mind = minds.get(mind_override or field.get("mind_ref") or module.get("mind"))
 
     produce = field_produce(fid)
     rules = []
@@ -895,11 +910,8 @@ def cmd_check(task_dir, fid):
             content = json.load(f)
     except Exception:
         content = {}
-    verdict = None
-    for item in (module.get("output_schema") or {}).get("required", []):
-        if item in content and isinstance(content[item], str):
-            verdict = content[item]
-            break
+    verdict_field = verdict_field_name(content, module)
+    verdict = content.get(verdict_field) if verdict_field else None
     if verdict is None:
         print(f"  ⚠ 判别式 {fid} 未找到判断项值（routing 无法生效）")
         append_state(task_dir, fields, fid, "passed", note="判断项缺失", parallel_group=pgroup)
@@ -967,8 +979,13 @@ def main():
         cmd_ready(task_dir, extra)
     elif cmd == "t3":
         if len(sys.argv) < 4:
-            sys.exit("用法: executor.py t3 <task_dir> <field>")
-        sys.exit(cmd_t3(task_dir, sys.argv[3]))
+            sys.exit("用法: executor.py t3 <task_dir> <field> [--mind <mind_id>]")
+        mind_override = None
+        if "--mind" in sys.argv:
+            idx = sys.argv.index("--mind")
+            if idx + 1 < len(sys.argv):
+                mind_override = sys.argv[idx + 1]
+        sys.exit(cmd_t3(task_dir, sys.argv[3], mind_override))
     elif cmd == "check":
         if len(sys.argv) < 4:
             sys.exit("用法: executor.py check <task_dir> <field>")
