@@ -327,22 +327,66 @@ def load_minds(task_dir):
 
 # ---------- 命令实现 ----------
 
+def topological_order(fields):
+    """全局拓扑序（Kahn）：依赖先于被依赖者。返回 field 列表。"""
+    from collections import deque
+    field_ids = [f["field"] for f in fields]
+    adj = {fid: [] for fid in field_ids}
+    indeg = {fid: 0 for fid in field_ids}
+    for f in fields:
+        fid = f["field"]
+        for dep in field_inputs(f):
+            if dep in adj:
+                adj[dep].append(fid)
+                indeg[fid] += 1
+    q = deque([fid for fid in field_ids if indeg[fid] == 0])
+    order = []
+    while q:
+        cur = q.popleft()
+        order.append(cur)
+        for nxt in adj[cur]:
+            indeg[nxt] -= 1
+            if indeg[nxt] == 0:
+                q.append(nxt)
+    return order
+
+
+def dependency_depth(fields, fid):
+    """字段的依赖深度（递归沿 inputs 连线上溯）。入度 0 字段深度 = 0。"""
+    f = get_field(fields, fid)
+    if f is None:
+        return 0
+    deps = field_inputs(f)
+    if not deps:
+        return 0
+    return 1 + max(dependency_depth(fields, d) for d in deps)
+
+
+def entry_fields(fields):
+    """入度 0 字段（无 inputs 依赖）——状态机入口。"""
+    return [f["field"] for f in fields if not field_inputs(f)]
+
+
 def generate_op_table(fields, modules):
-    """从装配表推导 op-table.json（条件路由表，排它）。
+    """从装配表推导 op-table.json（条件路由表，排它，数据依赖驱动）。
 
     规则（每个条件互斥，因为 state.csv 每行只填当步字段）：
-      generate 字段 → {"condition": "<field>=passed", "dispatch": "<装配顺序下一字段>"}
+      generate 字段 → {"condition": "<field>=passed", "dispatch": "<拓扑序最前的消费者>"}
       discriminate 字段 → {"condition": "<field>=<verdict>", "dispatch": "<routing 目标>"}
-    op-table 是状态机的推进引擎：读最后一行 → 匹配唯一条件 → 得下一步字段。
+    generate 的下一步由**数据依赖**推导：消费者按全局拓扑序（Kahn）排序，
+    拓扑上最靠前的消费者先执行——A 的产物先喂给链路上最先需要它的字段。
+    无消费者 → stop。入口字段 = 入度 0。
     """
     operations = []
-    field_ids = [f["field"] for f in fields]
-    for i, f in enumerate(fields):
+    topo = topological_order(fields)
+
+    for f in fields:
         fid = f["field"]
         produce = field_produce(fid)
         module = modules.get(f["module"], {})
         if produce == "generate":
-            nxt = field_ids[i + 1] if i + 1 < len(field_ids) else "stop"
+            consumers = [c for c in topo if c != fid and fid in field_inputs(get_field(fields, c))]
+            nxt = consumers[0] if consumers else "stop"
             operations.append({
                 "condition": f"{fid}=passed",
                 "dispatch": nxt,
@@ -442,8 +486,9 @@ def cmd_ready(task_dir):
     op_table = generate_op_table(fields, modules)
     nxt = next_field_by_op_table(op_table, state)
     if nxt is None:
-        # 初始态：第一个字段
-        nxt = fields[0]["field"] if fields else None
+        # 初始态：入口字段（入度 0，无 inputs 依赖）
+        entries = entry_fields(fields)
+        nxt = entries[0] if entries else (fields[0]["field"] if fields else None)
     if nxt is None or nxt == "stop":
         print("无可执行字段（任务已终止）")
         return
