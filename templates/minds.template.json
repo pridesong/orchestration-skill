@@ -4,6 +4,8 @@
       "id": "mind-default",
       "name": "默认执行思维",
       "type": "constraint",
+      "role": "execute",
+      "forbidden_density": "precise",
       "params": { "mode": "execute" },
       "forbidden": [
         "不得编造输入中不存在的事实、数字、来源",
@@ -14,9 +16,57 @@
       "apply_to": []
     },
     {
+      "id": "mind-focus",
+      "name": "聚焦执行思维",
+      "type": "constraint",
+      "role": "execute",
+      "forbidden_density": "precise",
+      "params": { "mode": "execute", "principle": "只做当前步骤声明的事，不扩散到相邻任务" },
+      "forbidden": [
+        "不得做当前步骤 scope 之外的事",
+        "不得提前产出依赖后续步骤的结论",
+        "不得修改不属于本步骤产出的文件"
+      ],
+      "apply_to": []
+    },
+    {
+      "id": "mind-diagnose",
+      "name": "诊断扫描思维",
+      "type": "constraint",
+      "role": "diagnose",
+      "forbidden_density": "zero",
+      "params": {
+        "mode": "scan",
+        "principle": "广域扫视：大量输入、不限搜索、鼓励类比——先看全貌再收敛"
+      },
+      "forbidden": [],
+      "apply_to": []
+    },
+    {
+      "id": "mind-trap-detect",
+      "name": "认知陷阱检测",
+      "type": "constraint",
+      "role": "audit",
+      "forbidden_density": "dense",
+      "params": {
+        "mode": "audit",
+        "source": "methodology-tools/tools/llm-trap-detect.js",
+        "principle": "扫描见词拆词、虚假类比、过度拟合、未经审查术语"
+      },
+      "forbidden": [
+        "不得外交辞令——直接指出问题",
+        "不得说 '可能有陷阱' 而不给证据——必须具体定位",
+        "不得跳过明显问题",
+        "不得把'听起来像所以应该是'当作推理——类比必须结构同构验证"
+      ],
+      "apply_to": []
+    },
+    {
       "id": "mind-audit",
       "name": "工具审计思维",
       "type": "constraint",
+      "role": "audit",
+      "forbidden_density": "dense",
       "params": {
         "mode": "audit",
         "gate": "I2",
@@ -50,38 +100,11 @@
       "apply_to": []
     },
     {
-      "id": "mind-focus",
-      "name": "聚焦执行思维",
-      "type": "constraint",
-      "params": { "mode": "execute", "principle": "只做当前步骤声明的事，不扩散到相邻任务" },
-      "forbidden": [
-        "不得做当前步骤 scope 之外的事",
-        "不得提前产出依赖后续步骤的结论",
-        "不得修改不属于本步骤产出的文件"
-      ],
-      "apply_to": []
-    },
-    {
-      "id": "mind-trap-detect",
-      "name": "认知陷阱检测",
-      "type": "constraint",
-      "params": {
-        "mode": "audit",
-        "source": "methodology-tools/tools/llm-trap-detect.js",
-        "principle": "扫描见词拆词、虚假类比、过度拟合、未经审查术语"
-      },
-      "forbidden": [
-        "不得外交辞令——直接指出问题",
-        "不得说 '可能有陷阱' 而不给证据——必须具体定位",
-        "不得跳过明显问题",
-        "不得把'听起来像所以应该是'当作推理——类比必须结构同构验证"
-      ],
-      "apply_to": []
-    },
-    {
       "id": "mind-decompose",
       "name": "系统分解思维",
       "type": "constraint",
+      "role": "architect",
+      "forbidden_density": "precise",
       "params": {
         "mode": "execute",
         "source": "methodology-tools/tools/systemic-decomposition.js",

@@ -99,6 +99,15 @@ description: 长任务编排引擎。接收任务→物化三件套(steps.json/o
 
 依据（LLM认知心理学）："结构 > 内容。FORBIDDEN 比'请用 X 方法'有效一百倍——不是提供新路，是物理封死老路。" 五类退化（摘果/摔门/融合/检索/散文）各自对应阻断手段。
 
+**认知模态配比（认知模态交响乐）**：每条步骤需要不同的 LLM 心理状态，同一 prompt 风格覆盖全管线 = 模态错配。mind 带 `role`（diagnose/scan/architect/write/audit/review/execute）+ `forbidden_density`（zero/precise/dense）：
+- **diagnose（零约束）**：广域扫视——大量输入、不限搜索、鼓励类比；给 FORBIDDEN 会漏掉现象
+- **write/execute（精准）**：心流构造——FORBIDDEN 命题级精准，不堵对路；通用禁令 = 负面心流
+- **audit/review（密集）**：对抗怀疑——长 FORBIDDEN 清单 + 预设命题为假（executor 自动注入"产出可能有错——逐条质疑"）
+
+**FORBIDDEN 最优粒度 = 命题级**：mind 通用 forbidden 之外，steps.json 步骤可声明 `forbidden` 数组（绑定到本步骤具体产出/输入），executor 追加进 T3 forbidden。通用禁令过度约束，命题级才精准。
+
+**输入不可变性（三层绕过优先级）**：LLM 找最小阻力绕过路径——改输入数据（最低费力）> 换算法 > 改约束。T3 forbidden 默认含"禁止修改输入数据或依赖产物——输入来自物化文件，不可变"。
+
 **日常 FORBIDDEN 库**（constraint 型 mind 的 forbidden 清单，从五类退化阻断提炼）：
 - 禁编造（幻觉）——不得输出输入中不存在的事实/数字/来源
 - 禁模糊（散文退化）——不得输出不可溯源的概括
@@ -106,17 +115,18 @@ description: 长任务编排引擎。接收任务→物化三件套(steps.json/o
 - 禁只做部分——覆盖全部产出字段
 
 **模板内置 mind 分类**：
-| mind | type | 来源 | 用途 |
-|---|---|---|---|
-| mind-default | constraint | 五类退化阻断 | 日常执行默认约束 |
-| mind-focus | constraint | 步骤边界 | 防止 scope 扩散 |
-| mind-trap-detect | constraint | llm-trap-detect.js | 认知陷阱检测（见词拆词/虚假类比/过度拟合） |
-| mind-decompose | constraint | systemic-decomposition.js | 系统分解（找边界非实现） |
-| mind-audit | constraint+enforce | I2 门 | 证据强制审计 |
-| mind-orchestrator | directive | C05/C03/C02 | 编排者心智 |
-| mind-orchestration-audit | directive | C05/M07/C06 | 编排审计心智 |
-| mind-crusher | directive | organs.js CRUSH_STEPS | 翻墙（科研） |
-| mind-anti-goal | directive | anti-goal.js | 反目标（科研） |
+| mind | type | role/密度 | 来源 | 用途 |
+|---|---|---|---|---|
+| mind-default | constraint | execute/precise | 五类退化阻断 | 日常执行默认约束 |
+| mind-focus | constraint | execute/precise | 步骤边界 | 防止 scope 扩散 |
+| mind-diagnose | constraint | diagnose/zero | 模态交响乐 | 广域扫视（诊断类步骤） |
+| mind-trap-detect | constraint | audit/dense | llm-trap-detect.js | 认知陷阱检测 |
+| mind-decompose | constraint | architect/precise | systemic-decomposition.js | 系统分解（找边界非实现） |
+| mind-audit | constraint+enforce | audit/dense | I2 门 | 证据强制审计 |
+| mind-orchestrator | directive | — | C05/C03/C02 | 编排者心智 |
+| mind-orchestration-audit | directive | — | C05/M07/C06 | 编排审计心智 |
+| mind-crusher | directive | — | organs.js CRUSH_STEPS | 翻墙（科研） |
+| mind-anti-goal | directive | — | anti-goal.js | 反目标（科研） |
 
 ## mind 具象化（enforce 四层，mind 从散文升级为协议）
 

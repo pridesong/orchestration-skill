@@ -44,6 +44,11 @@
           },
           "op_ref": { "type": "string", "pattern": "^op-" },
           "mind_ref": { "type": "string", "pattern": "^mind-" },
+          "forbidden": {
+            "type": "array",
+            "items": { "type": "string", "minLength": 1 },
+            "description": "命题级 forbidden（可选）：覆盖/补充 mind 通用 forbidden。FORBIDDEN 最优粒度是命题级——通用禁令会过度约束（负面心流），本步骤专属的禁令绑定到具体产出/输入。executor.py t3 把它追加进 T3 forbidden。"
+          },
           "extra_skills": {
             "type": "array",
             "items": { "type": "string", "minLength": 1 },

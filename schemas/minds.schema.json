@@ -19,6 +19,14 @@
             "enum": ["directive", "constraint"],
             "description": "mind 注入类型（默认 directive）：directive=正向注入（crusher 类，给一条思考路径，科研步骤用）；constraint=负向约束（FORBIDDEN 类，封死错路防幻觉区滑行，日常任务主力）"
           },
+          "role": {
+            "enum": ["diagnose", "scan", "architect", "write", "audit", "review", "execute"],
+            "description": "认知模态角色（认知模态交响乐）：决定 forbidden 密度——diagnose=广域扫视零约束；write=心流精准约束；audit/review=长清单+预设命题为假；execute=机械执行。同一 pipeline 需要多种认知模态，单一样式 = 模态错配"
+          },
+          "forbidden_density": {
+            "enum": ["zero", "precise", "dense"],
+            "description": "forbidden 密度（默认由 role 推导）：zero=诊断类（给禁令会漏掉现象）；precise=写手类（命题级精准，通用禁令=负面心流）；dense=审计类（长清单+预设命题为假）"
+          },
           "forbidden": {
             "type": "array",
             "items": { "type": "string", "minLength": 1 },

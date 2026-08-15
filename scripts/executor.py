@@ -295,6 +295,12 @@ def cmd_t3(task_dir, sid):
     if mind:
         mp = mind.get("params") or {}
         mtype = mind.get("type", "directive")
+        mrole = mind.get("role")
+        mdensity = mind.get("forbidden_density") or (
+            "dense" if mrole in ("audit", "review") else
+            "zero" if mrole == "diagnose" else
+            "precise"
+        )
         if mtype == "constraint":
             # 负向约束（FORBIDDEN 类，日常主力）：只封死错路，不教 LLM 怎么做——
             # 默认 LLM 具备产出能力，用 forbidden 防止它在幻觉区滑行
@@ -302,6 +308,8 @@ def cmd_t3(task_dir, sid):
             rules.append(f"思维约束（{mind.get('name', mp.get('mode', 'mind'))}）：以下为硬约束，违反即不合格")
             for fb in mforbidden:
                 rules.append(f"  禁止：{fb}")
+            if mdensity == "dense":
+                rules.append("  预设：产出可能有错——逐条质疑，找出所有可改进点，不要放行")
         elif mp.get("instruction"):
             rules.append(f"思维模式（{mind.get('name', mp.get('mode', 'mind'))}）：{mp['instruction']}")
         elif mp.get("mode") == "audit":
@@ -320,6 +328,9 @@ def cmd_t3(task_dir, sid):
 
     # constraint 型 mind 的 forbidden 也并入 T3 forbidden（负向约束走协议层，双保险）
     constraint_forbidden = (mind.get("forbidden") or []) if (mind and mind.get("type") == "constraint") else []
+
+    # step 级命题 forbidden（FORBIDDEN 最优粒度是命题级——覆盖/补充 mind 通用禁令）
+    step_forbidden = step.get("forbidden") or []
 
     # 能力插槽：op.required_skills/required_mcp + step.extra_skills/extra_mcp（合并去重）→ 注入 rules
     skills = list(dict.fromkeys([*(op.get("required_skills") or []), *(step.get("extra_skills") or [])]))
@@ -359,8 +370,9 @@ def cmd_t3(task_dir, sid):
             "产物必须写入 write 指定的相对路径（相对任务目录），禁止写其他路径",
             "产物必须满足全部验收标准（rules 中逐条列出），机械可检查",
             "不得引用输入数据中不存在的事实",
+            "禁止修改输入数据或依赖产物——输入来自物化文件，不可变（LLM 最小阻力绕过路径第一优先是改输入）",
             "JSON 产物必须是合法 JSON，字段严格符合 schema（禁止多余顶层字段）",
-        ] + enforce_forbidden + constraint_forbidden,
+        ] + enforce_forbidden + constraint_forbidden + step_forbidden,
         "check": enforce_check,
     }
     ddir = os.path.join(task_dir, "dispatch")
