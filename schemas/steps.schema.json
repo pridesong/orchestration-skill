@@ -29,8 +29,23 @@
           },
           "routing": {
             "type": "object",
-            "description": "仅 discriminate：判断值 → 目标字段或 stop（覆盖模块默认 routing；模块无 routing 时必填）",
-            "additionalProperties": { "type": "string" }
+            "description": "仅 discriminate：判别点路由设计——判断值 → 目标（字符串=目标字段/stop；对象=审计回退机制）。编排者设计每个判别点怎么路由，第三步据此生成 op-table。",
+            "additionalProperties": {
+              "oneOf": [
+                { "type": "string", "description": "目标字段名或 stop" },
+                {
+                  "type": "object",
+                  "description": "审计回退机制：to=回退目标；limit=回退次数上限；escalate=超限后换脑去向（mind-decider/mind-choose 等）；mind=本路由的思维覆盖",
+                  "properties": {
+                    "to": { "type": "string" },
+                    "limit": { "type": "integer", "minimum": 1 },
+                    "escalate": { "type": "string" },
+                    "mind": { "type": "string" }
+                  },
+                  "required": ["to"]
+                }
+              ]
+            }
           },
           "mind_ref": { "type": "string", "pattern": "^mind-", "description": "覆盖模块默认 mind" },
           "forbidden": {

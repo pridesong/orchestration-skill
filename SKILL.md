@@ -84,9 +84,26 @@ description: 长任务编排引擎。接收任务→模块装配(steps.json 装�
 | minds.json | 认知参数集（mind-write/extract/transform/query/reason/fill/verify/audit/classify…） | `schemas/minds.schema.json` |
 
 **完整状态机（三层分离）**：
-- `steps.json` — 结构层：装配表（字段定义 + 模块 + 连线 + 路由），编排者产出，物化后定稿
-- `op-table.json` — 路由层：条件路由表（`<field>=<verdict> → dispatch`），由装配表在 materialize 时机械生成，供审计/可视化（cataclysm op-table 同构）
-- `state.csv` — 状态层：追加行稀疏表（field/produce/status/judgment/module/routing_target/ts），**状态真相源**——每个字段执行/回修/重试都追加一行，最后一行=当前状态，全部历史=审计轨迹（cataclysm state.csv 同构）；steps.json 只保留结构，不存运行状态
+- `steps.json` — 结构层：装配表（字段定义 + 模块 + 连线 + **判别点路由设计**），编排者产出，物化后定稿
+- `op-table.json` — 路由层：条件路由表（`<field>=<value> → dispatch`），materialize 从编排者的判别点路由设计展开——**不同项目生成不同形态**（线性/审计回退/并行），排它由顺序 + 条件互斥保证
+- `state.csv` — 状态层：每步一行，只填当步字段（无继承），最后一行 = 当前状态；字段完成性 = 产物文件存在
+- `minds.json` — 认知参数集
+
+**判别点路由设计（编排者设计每个判别点怎么路由，第三步据此生成 op-table）**：
+```json
+"routing": {
+  "pass":   "generate_03",
+  "revise": {"to": "generate_01", "counter": "revise_count", "limit": 2,
+             "escalate": "mind-decider", "mind": "mind-flow"},
+  "reject": "stop"
+}
+```
+生成器展开（escalate 条件在前）：
+```
+discriminate_01_verdict=revise,revise_count>=2 → mind-decider   （超限换脑）
+discriminate_01_verdict=revise → generate_01, revise_count+1, mind: mind-flow  （回退+计数+心流）
+```
+计数（轮次/次数）由**主 agent 上下文**管理（`executor.py ready --state '{"revise_count": 2}'`），不落 csv——插件版主 agent 完全知道第几轮第几次；node 版程序主导才需要数据化。简单任务无需机制声明，路由用字符串目标即可。
 
 **模块 = 两级**：级别一 `produce`（generate 产出推进 / discriminate 判断路由）+ 级别二 `mind`（认知参数集，决定 forbidden）。模块自带协议（action/verify/output_schema/forbidden），编排者选模块 + 连线，不发明协议。
 

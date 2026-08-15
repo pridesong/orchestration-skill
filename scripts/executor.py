@@ -368,14 +368,16 @@ def entry_fields(fields):
 
 
 def generate_op_table(fields, modules):
-    """从装配表推导 op-table.json（条件路由表，排它，数据依赖驱动）。
+    """从编排者设计生成 op-table.json（条件路由表，排它）。
 
-    规则（每个条件互斥，因为 state.csv 每行只填当步字段）：
-      generate 字段 → {"condition": "<field>=passed", "dispatch": "<拓扑序最前的消费者>"}
-      discriminate 字段 → {"condition": "<field>=<verdict>", "dispatch": "<routing 目标>"}
-    generate 的下一步由**数据依赖**推导：消费者按全局拓扑序（Kahn）排序，
-    拓扑上最靠前的消费者先执行——A 的产物先喂给链路上最先需要它的字段。
-    无消费者 → stop。入口字段 = 入度 0。
+    状态机形态由编排者设计决定：
+      generate 字段 → {condition: "<field>=passed", dispatch: "<拓扑序最前的消费者>"}
+      discriminate 字段 → 判别点路由设计展开：
+        字符串目标 → {condition: "<field>=<verdict>", dispatch: "<目标>"}
+        对象机制（审计回退）→ 展开：
+          {condition: "<field>=<verdict>", dispatch: "<to>", side_effect: "<cnt>+1", mind: "<mind>"}
+          {condition: "<field>=<verdict>,<cnt>>=<limit>", dispatch: "<escalate>"}
+    生成器读编排者的判别点设计，机械展开为 op-table；形态随设计变化。
     """
     operations = []
     topo = topological_order(fields)
@@ -395,31 +397,93 @@ def generate_op_table(fields, modules):
         elif produce == "discriminate":
             routing = f.get("routing") or module.get("routing") or {}
             for verdict, target in routing.items():
-                operations.append({
-                    "condition": f"{fid}={verdict}",
-                    "dispatch": target,
-                    "side_effect": None,
-                })
+                if isinstance(target, str):
+                    operations.append({
+                        "condition": f"{fid}={verdict}",
+                        "dispatch": target,
+                        "side_effect": None,
+                    })
+                elif isinstance(target, dict):
+                    # 审计回退机制：目标 + 计数 + 换脑 + mind 覆盖
+                    # 顺序语义：escalate（更严格条件）规则先于普通回退——排它由顺序 + 条件互斥保证
+                    to = target.get("to", "stop")
+                    cnt = target.get("counter", f"{fid}_count")
+                    limit = target.get("limit")
+                    escalate = target.get("escalate")
+                    mind = target.get("mind")
+                    if limit is not None and escalate:
+                        operations.append({
+                            "condition": f"{fid}={verdict},{cnt}>={limit}",
+                            "dispatch": escalate,
+                            "side_effect": None,
+                        })
+                    op = {
+                        "condition": f"{fid}={verdict}",
+                        "dispatch": to,
+                        "side_effect": f"{cnt}+1" if limit is not None else None,
+                    }
+                    if mind:
+                        op["mind"] = mind
+                    operations.append(op)
     return operations
 
 
-def next_field_by_op_table(op_table, last_state):
-    """op-table 匹配最后一行 → 下一步字段（唯一，排它）。
+def condition_matches(condition, last_state, extra_state=None):
+    """条件匹配（排它）：逗号分隔的多条件 AND。
 
-    last_state = state.csv 最后一行非空字段 {field: value}（一步只填一个字段）。
-    遍历 op-table，条件 `<field>=<value>` 与最后一行匹配（字段存在且值相等）→ 返回 dispatch。
-    无匹配 → None（初始/终止）。
+    每项 <field>=<value>：字段存在且值相等。
+    last_state = state.csv 最后一行非空字段；extra_state = 外部状态（主 agent 提供的计数/轮次，
+    如 {"S": 2}——插件版轮次活在主 agent 上下文，不落 csv）。
     """
-    if not last_state:
+    combined = {}
+    combined.update(last_state or {})
+    combined.update(extra_state or {})
+    if not condition or not combined:
+        return False, None
+    parts = [p.strip() for p in condition.split(",") if p.strip()]
+    matched_field = None
+    for part in parts:
+        # 比较运算符：>= <= > < 优先于 =
+        op_match = None
+        for op_sym in (">=", "<=", ">", "<"):
+            if op_sym in part:
+                op_match = op_sym
+                break
+        if op_match:
+            c_field, c_val = part.split(op_match, 1)
+            actual = combined.get(c_field)
+            try:
+                a, b = float(actual), float(c_val)
+                ok = {"<": a < b, "<=": a <= b, ">": a > b, ">=": a >= b}[op_match]
+            except (TypeError, ValueError):
+                ok = False
+            if not ok:
+                return False, None
+            matched_field = c_field
+        elif "=" in part:
+            c_field, c_val = part.split("=", 1)
+            if str(combined.get(c_field)) == c_val:
+                matched_field = c_field
+            else:
+                return False, None
+    return matched_field is not None, matched_field
+
+
+def next_field_by_op_table(op_table, last_state, extra_state=None):
+    """op-table 匹配最后一行（+外部计数状态）→ 下一步（排它：条件互斥，顺序第一个命中）。
+
+    last_state = state.csv 最后一行非空字段；extra_state = 主 agent 提供的计数（轮次/次数）。
+    返回 {dispatch, mind} 或 None。
+    """
+    if not last_state and not extra_state:
         return None
-    fid, val = next(iter(last_state.items()))
     for op in op_table:
-        cond = op.get("condition", "")
-        # 条件形如 "field=value"
-        if "=" in cond:
-            c_field, c_val = cond.split("=", 1)
-            if c_field == fid and c_val == val:
-                return op.get("dispatch")
+        matched, _ = condition_matches(op.get("condition", ""), last_state, extra_state)
+        if matched:
+            result = {"dispatch": op.get("dispatch")}
+            if op.get("mind"):
+                result["mind"] = op["mind"]
+            return result
     return None
 
 
@@ -454,13 +518,15 @@ def cmd_materialize(task_dir):
     return 0
 
 
-def cmd_status(task_dir):
+def cmd_status(task_dir, extra_state=None):
     data = load_steps(task_dir)
     fields = data["fields"]
     state = load_state(task_dir)
     modules = load_modules(task_dir)
     op_table = generate_op_table(fields, modules)
-    nxt = next_field_by_op_table(op_table, state)
+    nxt_result = next_field_by_op_table(op_table, state, extra_state)
+    nxt = nxt_result["dispatch"] if nxt_result else None
+    nxt_mind = nxt_result.get("mind") if nxt_result else None
     print(f"任务 {data.get('task_id', '?')} v{data.get('version', '?')}")
     for f in fields:
         fid = f["field"]
@@ -476,15 +542,19 @@ def cmd_status(task_dir):
             print(f"  {fid:<28} [{produce}]  {'未执行':<12}{marker} {f.get('name', '')}{dep_s}")
     if nxt is None:
         print("  当前无下一步（初始态或已终止）")
+    elif nxt_mind:
+        print(f"  下一步 mind: {nxt_mind}（op-table 指定换脑）")
 
 
-def cmd_ready(task_dir):
+def cmd_ready(task_dir, extra_state=None):
     data = load_steps(task_dir)
     fields = data["fields"]
     state = load_state(task_dir)
     modules = load_modules(task_dir)
     op_table = generate_op_table(fields, modules)
-    nxt = next_field_by_op_table(op_table, state)
+    nxt_result = next_field_by_op_table(op_table, state, extra_state)
+    nxt = nxt_result["dispatch"] if nxt_result else None
+    nxt_mind = nxt_result.get("mind") if nxt_result else None
     if nxt is None:
         # 初始态：入口字段（入度 0，无 inputs 依赖）
         entries = entry_fields(fields)
@@ -500,6 +570,8 @@ def cmd_ready(task_dir):
     print(f"下一步（op-table 驱动）：{nxt}  [{produce}]  {f.get('name', '')}")
     print(f"      module: {f['module']}")
     print(f"      产出: artifacts/{nxt}.json")
+    if nxt_mind:
+        print(f"      mind: {nxt_mind}（op-table 指定换脑）")
     print(f"      执行后调用 check {nxt} 验证推进")
 
 
@@ -739,16 +811,30 @@ def cmd_reset(task_dir, fid):
     print(f"{fid} → reset（重新编排完成）")
 
 
+def parse_extra_state(argv):
+    """解析 --state '{"S":2}' → 外部计数状态（主 agent 提供轮次/次数）。"""
+    extra = {}
+    if "--state" in argv:
+        idx = argv.index("--state")
+        if idx + 1 < len(argv):
+            try:
+                extra = json.loads(argv[idx + 1])
+            except json.JSONDecodeError:
+                sys.exit("--state 必须是合法 JSON，如 '{\"S\": 2}'")
+    return extra
+
+
 def main():
     if len(sys.argv) < 3:
         print(__doc__)
         sys.exit(2)
     cmd = sys.argv[1]
     task_dir = sys.argv[2]
+    extra = parse_extra_state(sys.argv)
     if cmd == "status":
-        cmd_status(task_dir)
+        cmd_status(task_dir, extra)
     elif cmd == "ready":
-        cmd_ready(task_dir)
+        cmd_ready(task_dir, extra)
     elif cmd == "t3":
         if len(sys.argv) < 4:
             sys.exit("用法: executor.py t3 <task_dir> <field>")
